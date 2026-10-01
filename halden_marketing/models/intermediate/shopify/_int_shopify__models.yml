@@ -43,6 +43,14 @@ models:
         description: Days between the order and its first refund; null when not refunded.
       - name: return_reasons
         description: Distinct return reasons across the order's refunds, comma-separated.
+      - name: refunded_line_count
+        description: Distinct order line items with at least one refunded unit; 0 when no refund.
+        data_tests:
+          - not_null
+      - name: refunded_product_count
+        description: Distinct products refunded on the order; 0 when no refund.
+        data_tests:
+          - not_null
       - name: is_fully_refunded
         description: All ordered units were refunded.
       - name: is_partially_refunded

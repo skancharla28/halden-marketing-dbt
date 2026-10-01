@@ -109,12 +109,86 @@ models:
       - name: product_id
         data_tests:
           - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_shopify__products')
+                field: product_id
       - name: variant_id
         data_tests:
           - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_shopify__product_variants')
+                field: variant_id
       - name: quantity
         data_tests:
           - not_null
+
+  - name: stg_shopify__products
+    description: >-
+      One row per product. gender and season are parsed from tags, which always follow
+      '<type>, <gender>, <season>'. Variant-level detail is in stg_shopify__product_variants.
+    columns:
+      - name: product_id
+        data_tests:
+          - unique
+          - not_null
+      - name: handle
+        description: URL handle (/products/<handle>). Use to join GA4 page paths to products.
+        data_tests:
+          - unique
+          - not_null
+      - name: product_type
+        description: Product category (Tops, Bottoms, Outerwear, Dresses, Activewear, Accessories, Gift Card).
+        data_tests:
+          - not_null
+      - name: is_gift_card
+        description: True for the gift card product. Exclude from merchandise analysis.
+      - name: gender
+        description: Second tag (women, men, unisex, kids).
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['women', 'men', 'unisex', 'kids']
+      - name: season
+        description: Third tag (core = year-round, fall = seasonal).
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['core', 'fall']
+      - name: image_url
+        description: URL of the product's main image.
+
+  - name: stg_shopify__product_variants
+    description: >-
+      One row per product variant (color / size combination). Joins to stg_shopify__products on
+      product_id and to stg_shopify__order_lines on variant_id.
+    columns:
+      - name: variant_id
+        data_tests:
+          - unique
+          - not_null
+      - name: product_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_shopify__products')
+                field: product_id
+      - name: sku
+        description: >-
+          Stock keeping unit. Not unique: SKUs are built from a truncated product name, so related
+          products (e.g. the Cloudknit tees and long sleeve) share SKUs. Join on variant_id instead.
+      - name: color
+        description: Option 1 (Color). Null for the gift card, whose source value is 'Default'.
+      - name: size
+        description: Option 2 (Size). For the gift card this holds the denomination ('$50').
+      - name: price
+        description: Current selling price.
+        data_tests:
+          - not_null
+      - name: is_inventory_tracked
+        description: True when Shopify tracks inventory for the variant (false for the gift card).
 
   - name: stg_shopify__customer_journeys
     description: >-

@@ -29,6 +29,17 @@ refunds as (
     group by order_id
 ),
 
+refund_lines as (
+    select
+        refund_lines.order_id,
+        count(distinct refund_lines.order_line_id) as refunded_line_count,
+        count(distinct order_lines.product_id) as refunded_product_count
+    from {{ ref('stg_shopify__order_refund_lines') }} as refund_lines
+    left join {{ ref('stg_shopify__order_lines') }} as order_lines
+        on refund_lines.order_line_id = order_lines.order_line_id
+    group by refund_lines.order_id
+),
+
 joined as (
     select
         orders.*,
@@ -42,6 +53,8 @@ joined as (
         refunds.last_refunded_at,
         date_diff('day', orders.created_at, refunds.first_refunded_at) as days_to_first_refund,
         coalesce(refunds.units_refunded, 0) as units_refunded,
+        coalesce(refund_lines.refunded_line_count, 0) as refunded_line_count,
+        coalesce(refund_lines.refunded_product_count, 0) as refunded_product_count,
         coalesce(refunds.refunded_subtotal, 0) as refunded_subtotal,
         coalesce(refunds.refunded_tax, 0) as refunded_tax,
         coalesce(refunds.refunded_amount, 0) as refunded_amount,
@@ -51,6 +64,8 @@ joined as (
         on orders.order_id = order_lines.order_id
     left join refunds
         on orders.order_id = refunds.order_id
+    left join refund_lines
+        on orders.order_id = refund_lines.order_id
 )
 
 select
