@@ -190,6 +190,61 @@ models:
       - name: is_inventory_tracked
         description: True when Shopify tracks inventory for the variant (false for the gift card).
 
+  - name: stg_shopify__discount_codes
+    description: >-
+      One row per discount code. Join price_rule_id to stg_shopify__price_rules for the discount
+      itself, and discount_code to stg_shopify__orders.discount_code for usage.
+    columns:
+      - name: discount_code_id
+        data_tests:
+          - unique
+          - not_null
+      - name: discount_code
+        description: Code text customers enter at checkout (e.g. BFCM30). Classified in the discount_code_types seed.
+        data_tests:
+          - unique
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('discount_code_types')
+                field: discount_code
+      - name: price_rule_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_shopify__price_rules')
+                field: price_rule_id
+      - name: usage_count
+        description: Times the code has been used, as reported by Shopify.
+
+  - name: stg_shopify__price_rules
+    description: >-
+      One row per price rule: the discount (type, value, eligibility, limits) behind a discount code.
+    columns:
+      - name: price_rule_id
+        data_tests:
+          - unique
+          - not_null
+      - name: value_type
+        description: percentage or fixed_amount; says how to read discount_value.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['percentage', 'fixed_amount']
+      - name: discount_value
+        description: >-
+          Size of the discount as a positive number: percent off when value_type is 'percentage',
+          currency amount when 'fixed_amount'. Source stores it negative.
+        data_tests:
+          - not_null
+      - name: is_once_per_customer
+        description: True when each customer can use the code only once (e.g. WELCOME10).
+      - name: starts_at
+        description: When the rule became active. Not the promotion window; use order dates for that.
+      - name: ends_at
+        description: When the rule expires; null means no end date (true for every rule in the source).
+
   - name: stg_shopify__customer_journeys
     description: >-
       One row per order from Shopify's customer journey summary: first and last visit source, landing

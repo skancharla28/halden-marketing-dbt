@@ -1,0 +1,13 @@
+utm_source,utm_medium,channel,platform,is_paid
+google,cpc,Paid Search,Google Ads,true
+youtube,paid_video,Paid Video,Google Ads,true
+facebook,paid_social,Paid Social,Meta,true
+facebook,paid social,Paid Social,Meta,true
+fb,paid_social,Paid Social,Meta,true
+ig,paid_social,Paid Social,Meta,true
+an,paid_social,Paid Social,Meta,true
+msg,paid_social,Paid Social,Meta,true
+tiktok,paid_social,Paid Social,TikTok,true
+linkedin,paid_social,Paid Social,LinkedIn,true
+instagram,social,Organic Social,Meta,false
+klaviyo,email,Email,Klaviyo,false

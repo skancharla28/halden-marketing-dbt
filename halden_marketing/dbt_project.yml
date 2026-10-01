@@ -36,3 +36,7 @@ models:
     intermediate:
       +materialized: view
       +schema: intermediate
+
+seeds:
+  halden_marketing:
+    +schema: seeds

@@ -17,6 +17,41 @@ models:
       - name: address_count
         description: Number of addresses on file for the customer.
 
+  - name: int_shopify__discount_codes_enriched
+    description: >-
+      One row per discount code, combining the code, its price rule, its business type
+      (discount_code_types seed) and its usage from orders. Order stats include all orders, not only
+      marketing-eligible ones.
+    columns:
+      - name: discount_code_id
+        data_tests:
+          - unique
+          - not_null
+      - name: discount_code
+        data_tests:
+          - unique
+          - not_null
+      - name: code_type
+        description: welcome, seasonal_promo, creator or internal (from the discount_code_types seed).
+        data_tests:
+          - not_null
+      - name: discount_value
+        description: Positive discount size; percent or amount depending on value_type.
+        data_tests:
+          - not_null
+      - name: discount_pct
+        description: Percent off for percentage codes; null for fixed-amount codes.
+      - name: usage_count
+        description: Uses reported by Shopify. Should equal order_count.
+      - name: order_count
+        description: Orders in the data that used the code.
+      - name: total_discount_amount
+        description: Sum of total_discounts across those orders.
+      - name: net_sales
+        description: Sum of net_sales (after refunds) across those orders.
+      - name: first_used_at
+        description: First order using the code. With last_used_at, shows the real promotion window.
+
   - name: int_shopify__orders_enriched
     description: >-
       One row per Shopify order with line item counts and a refund/return summary. Refunds are

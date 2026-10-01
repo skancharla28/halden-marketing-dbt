@@ -1,0 +1,71 @@
+version: 2
+
+seeds:
+  - name: channel_mapping
+    description: >-
+      Maps each lowercased utm_source / utm_medium pair seen in Shopify orders and customer journeys
+      to a marketing channel and platform. One row per pair. Orders with no UTMs are not listed here;
+      models label them 'Direct / Unattributed'. Add a row whenever a new pair appears
+      (assert_all_utm_pairs_mapped fails until you do).
+    config:
+      column_types:
+        utm_source: varchar
+        utm_medium: varchar
+        channel: varchar
+        platform: varchar
+        is_paid: boolean
+    data_tests:
+      - unique:
+          column_name: "utm_source || '|' || utm_medium"
+    columns:
+      - name: utm_source
+        description: Lowercased utm_source value as it appears in the data (e.g. fb, ig, an are all Meta).
+        data_tests:
+          - not_null
+      - name: utm_medium
+        description: Lowercased utm_medium value as it appears in the data, including variants like 'paid social'.
+        data_tests:
+          - not_null
+      - name: channel
+        description: Reporting channel used for ROAS and attribution.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['Paid Search', 'Paid Social', 'Paid Video', 'Organic Social', 'Email']
+      - name: platform
+        description: >-
+          Company or tool that served the traffic. Paid platforms match the ad spend sources
+          (YouTube ads are bought through Google Ads).
+        data_tests:
+          - not_null
+      - name: is_paid
+        description: True when the traffic was bought (has ad spend to compare revenue against).
+        data_tests:
+          - not_null
+
+  - name: discount_code_types
+    description: >-
+      Business classification of each Shopify discount code. Shopify has no type field, so this records
+      what each code is for. Inferred from order history on 2026-10-01: seasonal promos are used only
+      around their event each year, creator codes steadily all year at similar volumes. Add a row for each
+      new code (the relationships test on stg_shopify__discount_codes fails until you do).
+    config:
+      column_types:
+        discount_code: varchar
+        code_type: varchar
+    columns:
+      - name: discount_code
+        description: Code text exactly as in Shopify.
+        data_tests:
+          - unique
+          - not_null
+      - name: code_type
+        description: >-
+          welcome = first-order incentive; seasonal_promo = sitewide event sale (BFCM, holiday, summer…);
+          creator = influencer / affiliate code; internal = staff or team orders.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['welcome', 'seasonal_promo', 'creator', 'internal']

@@ -26,11 +26,13 @@ first time, briefly explain what it is and why it fits. Tick items off the roadm
 - [x] Sources with column docs (all 7 raw schemas)
 - [x] Staging and intermediate models; custom schema macro; reusable macro (`extract_url_param`)
 - [x] Generic tests (unique, not_null, relationships, accepted_values)
-- [ ] Seeds: e.g. channel mapping (utm_source/medium → channel), country/region, KPI targets
+- [ ] Seeds (tick after 3 implementations; 2/3 so far: `channel_mapping`, `discount_code_types`).
+      Ideas: KPI targets, country/region
 - [ ] Packages: `dbt_utils` (surrogate keys, date spine, `union_relations`), maybe `dbt_expectations`
 - [ ] Incremental models: daily ad insights and GA4 events (`merge` / `delete+insert`, `is_incremental()`)
 - [ ] Snapshots: SCD2 history of campaign budgets/status and product prices
-- [ ] Singular tests and custom generic tests (e.g. spend reconciles to platform totals)
+- [ ] Singular tests and custom generic tests (e.g. spend reconciles to platform totals).
+      First singular test: `tests/assert_all_utm_pairs_mapped.sql`
 - [ ] Unit tests (dbt 1.8+) for tricky logic such as UTM parsing and attribution
 - [ ] Model contracts and versions on the marts
 - [ ] Source freshness on `_airbyte_extracted_at`
@@ -75,6 +77,8 @@ halden-marketing-dbt/
 └── halden_marketing/           # the dbt project — run dbt from here
     ├── dbt_project.yml
     ├── profiles.yml            # committed; no secrets (token comes from env)
+    ├── seeds/                  # hand-maintained CSVs (+ _seeds.yml), loaded to the `seeds` schema
+    ├── tests/                  # singular tests
     ├── macros/
     │   ├── generate_schema_name.sql   # custom schema used as-is (`intermediate`, not `staging_intermediate`)
     │   └── extract_url_param.sql      # URL-decoded query-string param from a URL/path
@@ -121,6 +125,7 @@ Two databases: Airbyte loads raw data into `mkt_raw`; dbt reads from it and writ
 | | `docs` | table_definitions, column_definitions — grain, keys, joins and gotchas for every raw table |
 | `mkt_analytics` | `staging` | `stg_*` models (views) |
 | | `intermediate` | `int_*` models (views) |
+| | `seeds` | seed tables loaded by `dbt seed` |
 
 All raw tables carry Airbyte metadata columns (`_airbyte_raw_id`, `_airbyte_extracted_at`, `_airbyte_meta`,
 `_airbyte_generation_id`). Staging models keep only `_airbyte_extracted_at`. Many fields are JSON
@@ -147,10 +152,19 @@ Sources are declared for all seven raw schemas; models exist only for Shopify an
 | `stg_shopify__customer_default_addresses` | customer | From `default_address` JSON |
 | `stg_shopify__customer_email_consents` | customer | From `email_marketing_consent` JSON |
 | `stg_shopify__products` | product | `gender` and `season` parsed from tags (`<type>, <gender>, <season>`); `is_gift_card` |
+| `stg_shopify__discount_codes` | discount code | Code text + Shopify `usage_count`; discount details live on the price rule |
+| `stg_shopify__price_rules` | price rule | `discount_value` flipped to positive (source is a negative string); `ends_at` always null |
 | `stg_shopify__product_variants` | variant | `option1`/`option2` renamed to `color`/`size`; SKUs are **not** unique — join on `variant_id` |
 
 Key joins: `order_lines.variant_id → product_variants.variant_id`, `product_variants.product_id →
 products.product_id`, `order_refund_lines.order_line_id → order_lines.order_line_id`.
+
+### Seeds
+
+| Seed | Grain | Notes |
+|---|---|---|
+| `channel_mapping` | utm_source + utm_medium | → `channel`, `platform`, `is_paid`. Keys are the lowercased raw values (incl. variants like `fb`, `paid social`). No-UTM traffic isn't listed (= Direct / Unattributed). `assert_all_utm_pairs_mapped` fails when a new pair appears |
+| `discount_code_types` | discount code | → `code_type` (welcome / seasonal_promo / creator / internal). Not in Shopify; inferred from order history. The relationships test on `stg_shopify__discount_codes` fails when a new code appears |
 
 ### Staging — Facebook Marketing
 
@@ -163,6 +177,7 @@ products.product_id`, `order_refund_lines.order_line_id → order_lines.order_li
 | Model | Grain | Notes |
 |---|---|---|
 | `int_shopify__orders_enriched` | order | Line counts, units ordered, refund summary (units, lines, products, amounts, reasons) attributed to the order date; `net_sales`, refund flags, and `is_marketing_eligible` (not test / cancelled / wholesale) — filter on it for ROAS and MMM |
+| `int_shopify__discount_codes_enriched` | discount code | Code + price rule + `code_type` seed + order usage (order count, discount given, net sales, first/last used). Discount codes ↔ price rules are 1:1 today |
 | `int_shopify__customers_enriched` | customer | Customer + default address + email consent; `address_count` |
 
 ## Conventions
