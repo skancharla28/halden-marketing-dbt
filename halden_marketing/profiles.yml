@@ -1,0 +1,10 @@
+halden_marketing:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: "md:mkt_analytics"
+      schema: staging
+      threads: 4
+      attach:
+        - path: "md:mkt_raw"

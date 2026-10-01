@@ -1,0 +1,186 @@
+version: 2
+
+models:
+  - name: stg_shopify__customers
+    description: One row per Shopify customer. Scalar fields only; JSON fields are split into the customer_* models.
+    columns:
+      - name: customer_id
+        data_tests:
+          - unique
+          - not_null
+      - name: full_name
+        description: First and last name joined with a space; null when both are missing.
+      - name: total_spent
+        description: Lifetime spend, including orders before the dataset starts.
+
+  - name: stg_shopify__customer_default_addresses
+    description: One row per customer, parsed from the `default_address` JSON.
+    columns:
+      - name: customer_id
+        data_tests:
+          - unique
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_shopify__customers')
+                field: customer_id
+
+  - name: stg_shopify__customer_addresses
+    description: One row per customer address, unnested from the `addresses` JSON array.
+    columns:
+      - name: address_id
+        data_tests:
+          - unique
+          - not_null
+      - name: customer_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_shopify__customers')
+                field: customer_id
+
+  - name: stg_shopify__customer_email_consents
+    description: One row per customer, parsed from the `email_marketing_consent` JSON.
+    columns:
+      - name: customer_id
+        data_tests:
+          - unique
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_shopify__customers')
+                field: customer_id
+      - name: consent_state
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['subscribed', 'not_subscribed', 'unsubscribed', 'pending']
+
+  - name: stg_shopify__orders
+    description: >-
+      One row per Shopify order with typed money fields, exclusion flags and last-click attribution
+      parsed from landing_site (UTMs URL-decoded; utm_source/utm_medium lowercased). For ROAS, exclude
+      is_test, is_cancelled and usually is_wholesale; subtotal_price is net sales before refunds.
+    columns:
+      - name: order_id
+        data_tests:
+          - unique
+          - not_null
+      - name: customer_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_shopify__customers')
+                field: customer_id
+      - name: financial_status
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['paid', 'partially_refunded', 'refunded', 'voided', 'pending', 'authorized']
+      - name: subtotal_price
+        description: Line items minus discounts, before shipping, tax and refunds.
+        data_tests:
+          - not_null
+      - name: discount_code
+        description: First discount code on the order (source holds at most one).
+      - name: utm_id
+        description: Ad platform campaign id for paid channels (Google Ads, Meta, TikTok, LinkedIn); Klaviyo message id for email.
+      - name: device_type
+        description: mobile / tablet / desktop, derived from the checkout user agent.
+
+  - name: stg_shopify__order_lines
+    description: >-
+      One row per order line item. gross_amount = unit_price * quantity; discount_amount sums the line's
+      discount allocations and reconciles to orders.total_discounts.
+    columns:
+      - name: order_line_id
+        data_tests:
+          - unique
+          - not_null
+      - name: order_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_shopify__orders')
+                field: order_id
+      - name: product_id
+        data_tests:
+          - not_null
+      - name: variant_id
+        data_tests:
+          - not_null
+      - name: quantity
+        data_tests:
+          - not_null
+
+  - name: stg_shopify__customer_journeys
+    description: >-
+      One row per order from Shopify's customer journey summary: first and last visit source, landing
+      page and UTMs, days to conversion and the customer's order index. has_journey is false when
+      Shopify did not track the visits.
+    columns:
+      - name: order_id
+        data_tests:
+          - unique
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_shopify__orders')
+                field: order_id
+      - name: customer_order_index
+        description: 1 = the customer's first order (new customer), >1 = repeat.
+
+  - name: stg_shopify__order_refunds
+    description: >-
+      One row per refund (mostly returns, issued 1-5 weeks after the order). Refunded amounts are summed
+      from the refund line items; refunded_amount (payment transactions) = refunded_subtotal + refunded_tax.
+    columns:
+      - name: refund_id
+        data_tests:
+          - unique
+          - not_null
+      - name: order_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_shopify__orders')
+                field: order_id
+      - name: refunded_at
+        description: When the refund was issued. Use this date for refund timing, not the order date.
+        data_tests:
+          - not_null
+      - name: return_reason
+        description: Refund note without the 'Return - ' prefix, e.g. 'Too small', 'Defective'.
+      - name: refunded_subtotal
+        description: Refunded merchandise amount, net of discounts and before tax.
+
+  - name: stg_shopify__order_refund_lines
+    description: One row per refunded order line. Use for net revenue and return rate by product.
+    columns:
+      - name: refund_line_id
+        data_tests:
+          - unique
+          - not_null
+      - name: refund_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_shopify__order_refunds')
+                field: refund_id
+      - name: order_line_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_shopify__order_lines')
+                field: order_line_id
+      - name: quantity
+        data_tests:
+          - not_null
+      - name: subtotal_amount
+        description: Refunded amount for the line, net of its discount and before tax.

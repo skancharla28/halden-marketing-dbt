@@ -1,0 +1,460 @@
+version: 2
+sources:
+  - name: linkedin_ads
+    database: mkt_raw
+    schema: linkedin_ads
+    description: >-
+      Raw linkedin_ads data. Source system: LinkedIn Marketing API via Airbyte source-linkedin-ads.
+    tables:
+      - name: accounts
+        description: >-
+          The LinkedIn sponsored ad account. Grain: One row per account. Joins: id appears inside URNs
+          (urn:li:sponsoredAccount:<id>) in other tables. Gotchas: Fields are camelCase.
+        columns:
+          - name: id
+            description: Ad account id.
+            data_type: BIGINT
+            data_tests:
+              - not_null
+              - unique
+          - name: name
+            description: Ad account name.
+            data_type: VARCHAR
+          - name: currency
+            description: Account currency.
+            data_type: VARCHAR
+          - name: status
+            description: Status (ACTIVE, PAUSED...).
+            data_type: VARCHAR
+          - name: type
+            description: Type (SPONSORED_UPDATES / BUSINESS).
+            data_type: VARCHAR
+          - name: reference
+            description: Organization URN that owns the account.
+            data_type: VARCHAR
+          - name: servingStatuses
+            description: JSON array of account serving statuses.
+            data_type: JSON
+          - name: notifiedOnCampaignOptimization
+            description: Notification setting.
+            data_type: BOOLEAN
+          - name: test
+            description: Test entity flag.
+            data_type: BOOLEAN
+          - name: created
+            description: Created timestamp.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: lastModified
+            description: Last modified timestamp.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: _airbyte_raw_id
+            description: >-
+              Unique id Airbyte assigns to each record it loads. Lineage/debugging only; not a business
+              key.
+            data_type: VARCHAR
+          - name: _airbyte_extracted_at
+            description: >-
+              UTC time Airbyte extracted this record from the source API. Use to deduplicate (keep latest
+              per business key) and for source freshness tests.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: _airbyte_meta
+            description: >-
+              JSON with sync metadata: {changes: [...type-casting issues...], sync_id}. Check `changes`
+              for fields Airbyte could not type-cast.
+            data_type: JSON
+          - name: _airbyte_generation_id
+            description: >-
+              Airbyte refresh generation counter (increments on full refresh). Rarely needed; can filter
+              to the latest generation after a refresh.
+            data_type: BIGINT
+      - name: ad_campaign_analytics
+        description: >-
+          Daily LinkedIn performance per campaign (same metrics as creative analytics, aggregated). Grain:
+          One row per campaign per day. Joins: sponsoredCampaign -> campaigns.id (URN). Gotchas: Do not
+          add to ad_creative_analytics (double count).
+        columns:
+          - name: start_date
+            description: Reporting date. Daily grain date.
+            data_type: DATE
+            data_tests:
+              - not_null
+          - name: end_date
+            description: End of reporting range (= start_date for daily rows).
+            data_type: DATE
+          - name: pivotValues
+            description: JSON array with the URN of the pivot entity (creative or campaign).
+            data_type: JSON
+          - name: sponsoredCampaign
+            description: >-
+              Campaign URN (urn:li:sponsoredCampaign:<id>). Join to campaigns.id after stripping the prefix.
+            data_type: VARCHAR
+            data_tests:
+              - not_null
+          - name: impressions
+            description: Impressions. Additive.
+            data_type: BIGINT
+          - name: landingPageClicks
+            description: Clicks to the website. Use for website traffic / CPC.
+            data_type: BIGINT
+          - name: clicks
+            description: All clicks (incl. social actions).
+            data_type: BIGINT
+          - name: costInLocalCurrency
+            description: Spend in account currency. Primary cost metric.
+            data_type: DOUBLE
+          - name: costInUsd
+            description: Spend in USD.
+            data_type: DOUBLE
+          - name: externalWebsiteConversions
+            description: Platform-reported website conversions (post-click + post-view). Platform-claimed.
+            data_type: BIGINT
+          - name: externalWebsitePostClickConversions
+            description: Conversions after a click.
+            data_type: BIGINT
+          - name: externalWebsitePostViewConversions
+            description: Conversions after a view only.
+            data_type: BIGINT
+          - name: conversionValueInLocalCurrency
+            description: Platform-reported conversion value.
+            data_type: DOUBLE
+          - name: likes
+            description: Likes.
+            data_type: BIGINT
+          - name: comments
+            description: Comments.
+            data_type: BIGINT
+          - name: shares
+            description: Shares.
+            data_type: BIGINT
+          - name: follows
+            description: Company page follows.
+            data_type: BIGINT
+          - name: oneClickLeads
+            description: Lead gen form leads (0, not used).
+            data_type: BIGINT
+          - name: videoViews
+            description: Video views (0, image ads).
+            data_type: BIGINT
+          - name: totalEngagements
+            description: Total engagements.
+            data_type: BIGINT
+          - name: approximateMemberReach
+            description: Approximate unique members reached. Not additive.
+            data_type: BIGINT
+          - name: _airbyte_raw_id
+            description: >-
+              Unique id Airbyte assigns to each record it loads. Lineage/debugging only; not a business
+              key.
+            data_type: VARCHAR
+          - name: _airbyte_extracted_at
+            description: >-
+              UTC time Airbyte extracted this record from the source API. Use to deduplicate (keep latest
+              per business key) and for source freshness tests.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: _airbyte_meta
+            description: >-
+              JSON with sync metadata: {changes: [...type-casting issues...], sync_id}. Check `changes`
+              for fields Airbyte could not type-cast.
+            data_type: JSON
+          - name: _airbyte_generation_id
+            description: >-
+              Airbyte refresh generation counter (increments on full refresh). Rarely needed; can filter
+              to the latest generation after a refresh.
+            data_type: BIGINT
+      - name: ad_creative_analytics
+        description: >-
+          Daily LinkedIn performance per creative: impressions, clicks, landing page clicks, cost, website
+          conversions, engagement. Grain: One row per creative per day. Joins: sponsoredCreative -> creatives.id.
+          Gotchas: `clicks` includes all clicks; `landingPageClicks` = clicks to the website. Rows only
+          exist on flight days.
+        columns:
+          - name: start_date
+            description: Reporting date. Daily grain date.
+            data_type: DATE
+            data_tests:
+              - not_null
+          - name: end_date
+            description: End of reporting range (= start_date for daily rows).
+            data_type: DATE
+          - name: pivotValues
+            description: JSON array with the URN of the pivot entity (creative or campaign).
+            data_type: JSON
+          - name: sponsoredCreative
+            description: Creative URN (urn:li:sponsoredCreative:<id>). Join to creatives.id.
+            data_type: VARCHAR
+            data_tests:
+              - not_null
+          - name: impressions
+            description: Impressions. Additive.
+            data_type: BIGINT
+          - name: landingPageClicks
+            description: Clicks to the website. Use for website traffic / CPC.
+            data_type: BIGINT
+          - name: clicks
+            description: All clicks (incl. social actions).
+            data_type: BIGINT
+          - name: costInLocalCurrency
+            description: Spend in account currency. Primary cost metric.
+            data_type: DOUBLE
+          - name: costInUsd
+            description: Spend in USD.
+            data_type: DOUBLE
+          - name: externalWebsiteConversions
+            description: Platform-reported website conversions (post-click + post-view). Platform-claimed.
+            data_type: BIGINT
+          - name: externalWebsitePostClickConversions
+            description: Conversions after a click.
+            data_type: BIGINT
+          - name: externalWebsitePostViewConversions
+            description: Conversions after a view only.
+            data_type: BIGINT
+          - name: conversionValueInLocalCurrency
+            description: Platform-reported conversion value.
+            data_type: DOUBLE
+          - name: likes
+            description: Likes.
+            data_type: BIGINT
+          - name: comments
+            description: Comments.
+            data_type: BIGINT
+          - name: shares
+            description: Shares.
+            data_type: BIGINT
+          - name: follows
+            description: Company page follows.
+            data_type: BIGINT
+          - name: oneClickLeads
+            description: Lead gen form leads (0, not used).
+            data_type: BIGINT
+          - name: videoViews
+            description: Video views (0, image ads).
+            data_type: BIGINT
+          - name: approximateMemberReach
+            description: Approximate unique members reached. Not additive.
+            data_type: BIGINT
+          - name: totalEngagements
+            description: Total engagements.
+            data_type: BIGINT
+          - name: _airbyte_raw_id
+            description: >-
+              Unique id Airbyte assigns to each record it loads. Lineage/debugging only; not a business
+              key.
+            data_type: VARCHAR
+          - name: _airbyte_extracted_at
+            description: >-
+              UTC time Airbyte extracted this record from the source API. Use to deduplicate (keep latest
+              per business key) and for source freshness tests.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: _airbyte_meta
+            description: >-
+              JSON with sync metadata: {changes: [...type-casting issues...], sync_id}. Check `changes`
+              for fields Airbyte could not type-cast.
+            data_type: JSON
+          - name: _airbyte_generation_id
+            description: >-
+              Airbyte refresh generation counter (increments on full refresh). Rarely needed; can filter
+              to the latest generation after a refresh.
+            data_type: BIGINT
+      - name: campaign_groups
+        description: >-
+          LinkedIn campaign groups (Corporate Gifting, Team & Workwear). Grain: One row per campaign group.
+          Joins: campaigns.campaignGroup = 'urn:li:sponsoredCampaignGroup:' || id.
+        columns:
+          - name: id
+            description: Campaign group id.
+            data_type: BIGINT
+            data_tests:
+              - not_null
+              - unique
+          - name: name
+            description: Campaign group name (initiative).
+            data_type: VARCHAR
+          - name: account
+            description: Account URN.
+            data_type: VARCHAR
+          - name: status
+            description: Status (ACTIVE, PAUSED...).
+            data_type: VARCHAR
+          - name: totalBudget
+            description: Total budget (null).
+            data_type: INTEGER
+          - name: runSchedule
+            description: JSON {start, end} epoch milliseconds.
+            data_type: JSON
+          - name: test
+            description: Test entity flag.
+            data_type: BOOLEAN
+          - name: created
+            description: Created timestamp.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: lastModified
+            description: Last modified timestamp.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: _airbyte_raw_id
+            description: >-
+              Unique id Airbyte assigns to each record it loads. Lineage/debugging only; not a business
+              key.
+            data_type: VARCHAR
+          - name: _airbyte_extracted_at
+            description: >-
+              UTC time Airbyte extracted this record from the source API. Use to deduplicate (keep latest
+              per business key) and for source freshness tests.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: _airbyte_meta
+            description: >-
+              JSON with sync metadata: {changes: [...type-casting issues...], sync_id}. Check `changes`
+              for fields Airbyte could not type-cast.
+            data_type: JSON
+          - name: _airbyte_generation_id
+            description: >-
+              Airbyte refresh generation counter (increments on full refresh). Rarely needed; can filter
+              to the latest generation after a refresh.
+            data_type: BIGINT
+      - name: campaigns
+        description: >-
+          LinkedIn campaigns: objective, format, bidding, targeting, schedule. LinkedIn targets B2B buyers
+          (corporate gifting / team apparel). Grain: One row per campaign. Joins: creatives.campaign =
+          'urn:li:sponsoredCampaign:' || id; ad_campaign_analytics.sponsoredCampaign; id equals `utm_id`
+          in landing URLs. Gotchas: LinkedIn only runs in flights (see manual.marketing_calendar). Budgets/costs
+          are JSON {amount, currencyCode}.
+        columns:
+          - name: id
+            description: Campaign id (numeric). Equals utm_id on LinkedIn clicks.
+            data_type: BIGINT
+            data_tests:
+              - not_null
+              - unique
+          - name: name
+            description: Campaign name (LI | <initiative> | <audience>). utm_campaign is a slug of this
+              name.
+            data_type: VARCHAR
+          - name: account
+            description: Account URN.
+            data_type: VARCHAR
+          - name: campaignGroup
+            description: Campaign group URN. Join to campaign_groups.id.
+            data_type: VARCHAR
+          - name: status
+            description: Status (ACTIVE, PAUSED...).
+            data_type: VARCHAR
+          - name: type
+            description: Type (SPONSORED_UPDATES / BUSINESS).
+            data_type: VARCHAR
+          - name: costType
+            description: Bidding unit (CPM).
+            data_type: VARCHAR
+          - name: objectiveType
+            description: Objective (WEBSITE_CONVERSION).
+            data_type: VARCHAR
+          - name: format
+            description: Ad format (SINGLE_IMAGE).
+            data_type: VARCHAR
+          - name: dailyBudget
+            description: JSON {amount, currencyCode}.
+            data_type: JSON
+          - name: unitCost
+            description: JSON bid amount {amount, currencyCode}.
+            data_type: JSON
+          - name: optimizationTargetType
+            description: Optimization target.
+            data_type: VARCHAR
+          - name: offsiteDeliveryEnabled
+            description: LinkedIn Audience Network enabled.
+            data_type: BOOLEAN
+          - name: audienceExpansionEnabled
+            description: Audience expansion enabled.
+            data_type: BOOLEAN
+          - name: locale
+            description: JSON {country, language}.
+            data_type: JSON
+          - name: targetingCriteria
+            description: JSON targeting (locations, job titles, company sizes).
+            data_type: JSON
+          - name: runSchedule
+            description: JSON {start, end} epoch milliseconds.
+            data_type: JSON
+          - name: created
+            description: Created timestamp.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: lastModified
+            description: Last modified timestamp.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: _airbyte_raw_id
+            description: >-
+              Unique id Airbyte assigns to each record it loads. Lineage/debugging only; not a business
+              key.
+            data_type: VARCHAR
+          - name: _airbyte_extracted_at
+            description: >-
+              UTC time Airbyte extracted this record from the source API. Use to deduplicate (keep latest
+              per business key) and for source freshness tests.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: _airbyte_meta
+            description: >-
+              JSON with sync metadata: {changes: [...type-casting issues...], sync_id}. Check `changes`
+              for fields Airbyte could not type-cast.
+            data_type: JSON
+          - name: _airbyte_generation_id
+            description: >-
+              Airbyte refresh generation counter (increments on full refresh). Rarely needed; can filter
+              to the latest generation after a refresh.
+            data_type: BIGINT
+      - name: creatives
+        description: >-
+          LinkedIn sponsored creatives (ads). Grain: One row per creative. Joins: id (URN) = ad_creative_analytics.sponsoredCreative;
+          campaign (URN) -> campaigns.id. Gotchas: id is a URN string, not a number.
+        columns:
+          - name: id
+            description: >-
+              Creative URN (urn:li:sponsoredCreative:<id>). Join to ad_creative_analytics.sponsoredCreative.
+            data_type: VARCHAR
+            data_tests:
+              - not_null
+              - unique
+          - name: campaign
+            description: Campaign URN. Join to campaigns.id.
+            data_type: VARCHAR
+          - name: account
+            description: Account URN.
+            data_type: VARCHAR
+          - name: name
+            description: 'Creative name: <theme> | <flight month>.'
+            data_type: VARCHAR
+          - name: intendedStatus
+            description: Status set by advertiser.
+            data_type: VARCHAR
+          - name: isServing
+            description: Currently serving.
+            data_type: BOOLEAN
+          - name: isTest
+            description: Test creative flag.
+            data_type: BOOLEAN
+          - name: content
+            description: JSON reference to the post (share URN).
+            data_type: JSON
+          - name: createdAt
+            description: Created timestamp.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: lastModifiedAt
+            description: Last modified timestamp.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: _airbyte_raw_id
+            description: >-
+              Unique id Airbyte assigns to each record it loads. Lineage/debugging only; not a business
+              key.
+            data_type: VARCHAR
+          - name: _airbyte_extracted_at
+            description: >-
+              UTC time Airbyte extracted this record from the source API. Use to deduplicate (keep latest
+              per business key) and for source freshness tests.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: _airbyte_meta
+            description: >-
+              JSON with sync metadata: {changes: [...type-casting issues...], sync_id}. Check `changes`
+              for fields Airbyte could not type-cast.
+            data_type: JSON
+          - name: _airbyte_generation_id
+            description: >-
+              Airbyte refresh generation counter (increments on full refresh). Rarely needed; can filter
+              to the latest generation after a refresh.
+            data_type: BIGINT

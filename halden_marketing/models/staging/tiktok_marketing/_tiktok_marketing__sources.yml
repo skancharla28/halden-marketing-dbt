@@ -1,0 +1,427 @@
+version: 2
+sources:
+  - name: tiktok_marketing
+    database: mkt_raw
+    schema: tiktok_marketing
+    description: >-
+      Raw tiktok_marketing data. Source system: TikTok Marketing API via Airbyte source-tiktok-marketing.
+    tables:
+      - name: ad_groups
+        description: >-
+          TikTok ad groups: targeting, placements, optimization and schedule. Grain: One row per ad group.
+          Joins: adgroup_id -> ads.adgroup_id; campaign_id -> campaigns. Gotchas: List-type settings (placements,
+          age_groups, location_ids) are JSON arrays.
+        columns:
+          - name: adgroup_id
+            description: Ad group id. Join key.
+            data_type: BIGINT
+            data_tests:
+              - not_null
+              - unique
+          - name: adgroup_name
+            description: Ad group name. Passed as utm_term.
+            data_type: VARCHAR
+          - name: campaign_id
+            description: TikTok campaign id. Equals utm_id on TikTok clicks.
+            data_type: BIGINT
+          - name: advertiser_id
+            description: TikTok advertiser (ad account) id. Join key.
+            data_type: BIGINT
+          - name: placement_type
+            description: Placement mode.
+            data_type: VARCHAR
+          - name: placements
+            description: JSON array of placements (PLACEMENT_TIKTOK).
+            data_type: JSON
+          - name: promotion_type
+            description: WEBSITE or VIDEO_SHOPPING.
+            data_type: VARCHAR
+          - name: optimization_goal
+            description: CONVERT or VALUE.
+            data_type: VARCHAR
+          - name: optimization_event
+            description: Pixel event optimized for (SHOPPING).
+            data_type: VARCHAR
+          - name: billing_event
+            description: OCPM.
+            data_type: VARCHAR
+          - name: bid_type
+            description: Bid type.
+            data_type: VARCHAR
+          - name: pixel_id
+            description: TikTok pixel id.
+            data_type: VARCHAR
+          - name: budget_mode
+            description: BUDGET_MODE_DAY / BUDGET_MODE_INFINITE.
+            data_type: VARCHAR
+          - name: budget
+            description: Budget amount (USD).
+            data_type: DOUBLE
+          - name: location_ids
+            description: JSON array of geo ids (US).
+            data_type: JSON
+          - name: age_groups
+            description: JSON array of age buckets targeted.
+            data_type: JSON
+          - name: gender
+            description: Gender targeting.
+            data_type: VARCHAR
+          - name: schedule_type
+            description: Schedule mode.
+            data_type: VARCHAR
+          - name: schedule_start_time
+            description: Scheduled start.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: schedule_end_time
+            description: Scheduled end (null = ongoing).
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: operation_status
+            description: ENABLE / DISABLE.
+            data_type: VARCHAR
+          - name: create_time
+            description: Created timestamp.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: modify_time
+            description: Last modified timestamp.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: _airbyte_raw_id
+            description: >-
+              Unique id Airbyte assigns to each record it loads. Lineage/debugging only; not a business
+              key.
+            data_type: VARCHAR
+          - name: _airbyte_extracted_at
+            description: >-
+              UTC time Airbyte extracted this record from the source API. Use to deduplicate (keep latest
+              per business key) and for source freshness tests.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: _airbyte_meta
+            description: >-
+              JSON with sync metadata: {changes: [...type-casting issues...], sync_id}. Check `changes`
+              for fields Airbyte could not type-cast.
+            data_type: JSON
+          - name: _airbyte_generation_id
+            description: >-
+              Airbyte refresh generation counter (increments on full refresh). Rarely needed; can filter
+              to the latest generation after a refresh.
+            data_type: BIGINT
+      - name: ads
+        description: >-
+          TikTok ads: format, copy, landing page URL template, Spark Ads creator identity. Grain: One
+          row per ad. Joins: ad_id -> ads_reports_daily.ad_id; adgroup_id -> ad_groups; campaign_id ->
+          campaigns. Gotchas: landing_page_url contains TikTok macros (__CAMPAIGN_NAME__, __CID_NAME__,
+          __AID_NAME__, __CAMPAIGN_ID__) resolved at click time.
+        columns:
+          - name: ad_id
+            description: Ad id. Join key.
+            data_type: BIGINT
+            data_tests:
+              - not_null
+              - unique
+          - name: ad_name
+            description: >-
+              Ad name: SPARK_<creator>_<hook>_<yymmdd> or BRAND_<hook>_<yymmdd>. Passed as utm_content;
+              creator vs brand analysis.
+            data_type: VARCHAR
+          - name: adgroup_id
+            description: Ad group id. Join key.
+            data_type: BIGINT
+          - name: campaign_id
+            description: TikTok campaign id. Equals utm_id on TikTok clicks.
+            data_type: BIGINT
+          - name: advertiser_id
+            description: TikTok advertiser (ad account) id. Join key.
+            data_type: BIGINT
+          - name: ad_format
+            description: SINGLE_VIDEO or CATALOG_CAROUSEL.
+            data_type: VARCHAR
+          - name: ad_text
+            description: Ad caption (null for Spark Ads, which reuse the creator's post).
+            data_type: VARCHAR
+          - name: call_to_action
+            description: CTA (SHOP_NOW).
+            data_type: VARCHAR
+          - name: landing_page_url
+            description: >-
+              Landing URL with TikTok UTM macros (__CAMPAIGN_NAME__, __CID_NAME__, __AID_NAME__, __CAMPAIGN_ID__).
+            data_type: VARCHAR
+          - name: identity_type
+            description: >-
+              AUTH_CODE = Spark Ad (creator's organic post); CUSTOMIZED_USER = brand identity. Creator
+              vs brand content split.
+            data_type: VARCHAR
+          - name: display_name
+            description: Account shown on the ad (creator handle or brand).
+            data_type: VARCHAR
+          - name: tiktok_item_id
+            description: Original TikTok post id for Spark Ads.
+            data_type: VARCHAR
+          - name: video_id
+            description: Video asset id.
+            data_type: VARCHAR
+          - name: operation_status
+            description: ENABLE / DISABLE.
+            data_type: VARCHAR
+          - name: secondary_status
+            description: Delivery status detail.
+            data_type: VARCHAR
+          - name: create_time
+            description: Created timestamp.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: modify_time
+            description: Last modified timestamp.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: _airbyte_raw_id
+            description: >-
+              Unique id Airbyte assigns to each record it loads. Lineage/debugging only; not a business
+              key.
+            data_type: VARCHAR
+          - name: _airbyte_extracted_at
+            description: >-
+              UTC time Airbyte extracted this record from the source API. Use to deduplicate (keep latest
+              per business key) and for source freshness tests.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: _airbyte_meta
+            description: >-
+              JSON with sync metadata: {changes: [...type-casting issues...], sync_id}. Check `changes`
+              for fields Airbyte could not type-cast.
+            data_type: JSON
+          - name: _airbyte_generation_id
+            description: >-
+              Airbyte refresh generation counter (increments on full refresh). Rarely needed; can filter
+              to the latest generation after a refresh.
+            data_type: BIGINT
+      - name: ads_reports_daily
+        description: >-
+          Daily TikTok ad performance. All metrics are inside the `metrics` JSON object as STRINGS (spend,
+          impressions, clicks, conversion, complete_payment, video views...). Grain: One row per ad per
+          day. Joins: ad_id -> ads.ad_id. Gotchas: Cast metrics: (metrics->>'spend')::DOUBLE. `clicks`
+          in metrics = all clicks. Platform conversions under-report vs other platforms (view-heavy channel).
+        columns:
+          - name: advertiser_id
+            description: TikTok advertiser (ad account) id. Join key.
+            data_type: BIGINT
+          - name: ad_id
+            description: Ad id. Join key.
+            data_type: BIGINT
+            data_tests:
+              - not_null
+          - name: stat_time_day
+            description: Reporting day (timestamp at midnight, account timezone). Cast to DATE.
+            data_type: TIMESTAMP WITH TIME ZONE
+            data_tests:
+              - not_null
+          - name: dimensions
+            description: >-
+              JSON with the report's dimension keys (ad_id/campaign_id, stat_time_day). Redundant with
+              columns.
+            data_type: JSON
+          - name: metrics
+            description: >-
+              JSON object with metrics as STRINGS: spend, impressions, clicks, reach, cpc, cpm, ctr, conversion,
+              complete_payment, complete_payment_roas, total_complete_payment_rate (value), video_play_actions,
+              video_watched_2s/6s, video_views_p25..p100, likes, comments, shares, follows, profile_visits,
+              plus campaign/adgroup/ad names and ids. Cast e.g. (metrics->>'spend')::DOUBLE. complete_payment
+              = platform purchases; total_complete_payment_rate = purchase value.
+            data_type: JSON
+          - name: _airbyte_raw_id
+            description: >-
+              Unique id Airbyte assigns to each record it loads. Lineage/debugging only; not a business
+              key.
+            data_type: VARCHAR
+          - name: _airbyte_extracted_at
+            description: >-
+              UTC time Airbyte extracted this record from the source API. Use to deduplicate (keep latest
+              per business key) and for source freshness tests.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: _airbyte_meta
+            description: >-
+              JSON with sync metadata: {changes: [...type-casting issues...], sync_id}. Check `changes`
+              for fields Airbyte could not type-cast.
+            data_type: JSON
+          - name: _airbyte_generation_id
+            description: >-
+              Airbyte refresh generation counter (increments on full refresh). Rarely needed; can filter
+              to the latest generation after a refresh.
+            data_type: BIGINT
+      - name: advertisers
+        description: >-
+          The TikTok advertiser (ad account): currency, timezone, status. Grain: One row per advertiser.
+          Joins: advertiser_id -> all tiktok tables.
+        columns:
+          - name: advertiser_id
+            description: TikTok advertiser (ad account) id. Join key.
+            data_type: BIGINT
+            data_tests:
+              - not_null
+              - unique
+          - name: name
+            description: Advertiser name.
+            data_type: VARCHAR
+          - name: company
+            description: Company name.
+            data_type: VARCHAR
+          - name: currency
+            description: ISO currency code (USD).
+            data_type: VARCHAR
+          - name: timezone
+            description: Account timezone.
+            data_type: VARCHAR
+          - name: display_timezone
+            description: Display timezone.
+            data_type: VARCHAR
+          - name: country
+            description: Country.
+            data_type: VARCHAR
+          - name: status
+            description: Advertiser account status (STATUS_ENABLE).
+            data_type: VARCHAR
+          - name: industry
+            description: Industry code.
+            data_type: VARCHAR
+          - name: role
+            description: Account role.
+            data_type: VARCHAR
+          - name: create_time
+            description: Created timestamp.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: _airbyte_raw_id
+            description: >-
+              Unique id Airbyte assigns to each record it loads. Lineage/debugging only; not a business
+              key.
+            data_type: VARCHAR
+          - name: _airbyte_extracted_at
+            description: >-
+              UTC time Airbyte extracted this record from the source API. Use to deduplicate (keep latest
+              per business key) and for source freshness tests.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: _airbyte_meta
+            description: >-
+              JSON with sync metadata: {changes: [...type-casting issues...], sync_id}. Check `changes`
+              for fields Airbyte could not type-cast.
+            data_type: JSON
+          - name: _airbyte_generation_id
+            description: >-
+              Airbyte refresh generation counter (increments on full refresh). Rarely needed; can filter
+              to the latest generation after a refresh.
+            data_type: BIGINT
+      - name: campaigns
+        description: >-
+          TikTok campaigns: objective, budget, status. Includes Spark Ads (creator posts), standard web-conversion
+          and Video Shopping Ads campaigns. Grain: One row per campaign. Joins: campaign_id -> ad_groups,
+          ads, reports; equals `utm_id` in landing URLs. Gotchas: TikTok was paused 2025-03-10 to 2025-03-30
+          (see manual.marketing_calendar).
+        columns:
+          - name: campaign_id
+            description: TikTok campaign id. Equals utm_id on TikTok clicks.
+            data_type: BIGINT
+            data_tests:
+              - not_null
+              - unique
+          - name: campaign_name
+            description: Campaign name (TT | ...). Passed as utm_campaign.
+            data_type: VARCHAR
+          - name: advertiser_id
+            description: TikTok advertiser (ad account) id. Join key.
+            data_type: BIGINT
+          - name: objective_type
+            description: WEB_CONVERSIONS or PRODUCT_SALES.
+            data_type: VARCHAR
+          - name: campaign_type
+            description: REGULAR_CAMPAIGN.
+            data_type: VARCHAR
+          - name: budget_mode
+            description: BUDGET_MODE_DAY / BUDGET_MODE_INFINITE.
+            data_type: VARCHAR
+          - name: budget
+            description: Budget amount (USD).
+            data_type: DOUBLE
+          - name: operation_status
+            description: ENABLE / DISABLE.
+            data_type: VARCHAR
+          - name: secondary_status
+            description: Delivery status detail.
+            data_type: VARCHAR
+          - name: is_smart_performance_campaign
+            description: Smart+ campaign flag.
+            data_type: BOOLEAN
+          - name: is_search_campaign
+            description: Search ads campaign flag.
+            data_type: BOOLEAN
+          - name: create_time
+            description: Created timestamp.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: modify_time
+            description: Last modified timestamp.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: _airbyte_raw_id
+            description: >-
+              Unique id Airbyte assigns to each record it loads. Lineage/debugging only; not a business
+              key.
+            data_type: VARCHAR
+          - name: _airbyte_extracted_at
+            description: >-
+              UTC time Airbyte extracted this record from the source API. Use to deduplicate (keep latest
+              per business key) and for source freshness tests.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: _airbyte_meta
+            description: >-
+              JSON with sync metadata: {changes: [...type-casting issues...], sync_id}. Check `changes`
+              for fields Airbyte could not type-cast.
+            data_type: JSON
+          - name: _airbyte_generation_id
+            description: >-
+              Airbyte refresh generation counter (increments on full refresh). Rarely needed; can filter
+              to the latest generation after a refresh.
+            data_type: BIGINT
+      - name: campaigns_reports_daily
+        description: >-
+          Daily TikTok campaign performance (subset of metrics), metrics as strings in JSON. Grain: One
+          row per campaign per day. Joins: campaign_id -> campaigns.campaign_id. Gotchas: Do not add to
+          ads_reports_daily (double count).
+        columns:
+          - name: advertiser_id
+            description: TikTok advertiser (ad account) id. Join key.
+            data_type: BIGINT
+          - name: campaign_id
+            description: TikTok campaign id. Equals utm_id on TikTok clicks.
+            data_type: BIGINT
+            data_tests:
+              - not_null
+          - name: stat_time_day
+            description: Reporting day (timestamp at midnight, account timezone). Cast to DATE.
+            data_type: TIMESTAMP WITH TIME ZONE
+            data_tests:
+              - not_null
+          - name: dimensions
+            description: >-
+              JSON with the report's dimension keys (ad_id/campaign_id, stat_time_day). Redundant with
+              columns.
+            data_type: JSON
+          - name: metrics
+            description: >-
+              JSON object with metrics as STRINGS: spend, impressions, clicks, reach, cpc, cpm, ctr, conversion,
+              complete_payment, complete_payment_roas, total_complete_payment_rate (value), video_play_actions,
+              video_watched_2s/6s, video_views_p25..p100, likes, comments, shares, follows, profile_visits,
+              plus campaign/adgroup/ad names and ids. Cast e.g. (metrics->>'spend')::DOUBLE. complete_payment
+              = platform purchases; total_complete_payment_rate = purchase value.
+            data_type: JSON
+          - name: _airbyte_raw_id
+            description: >-
+              Unique id Airbyte assigns to each record it loads. Lineage/debugging only; not a business
+              key.
+            data_type: VARCHAR
+          - name: _airbyte_extracted_at
+            description: >-
+              UTC time Airbyte extracted this record from the source API. Use to deduplicate (keep latest
+              per business key) and for source freshness tests.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: _airbyte_meta
+            description: >-
+              JSON with sync metadata: {changes: [...type-casting issues...], sync_id}. Check `changes`
+              for fields Airbyte could not type-cast.
+            data_type: JSON
+          - name: _airbyte_generation_id
+            description: >-
+              Airbyte refresh generation counter (increments on full refresh). Rarely needed; can filter
+              to the latest generation after a refresh.
+            data_type: BIGINT

@@ -1,0 +1,53 @@
+version: 2
+
+models:
+  - name: int_shopify__customers_enriched
+    description: >-
+      One row per Shopify customer, combining base attributes, default address and email
+      consent. Use stg_shopify__customer_addresses for per-address detail.
+    columns:
+      - name: customer_id
+        data_tests:
+          - unique
+          - not_null
+      - name: is_email_subscribed
+        description: True when the email consent state is 'subscribed'; false when missing.
+        data_tests:
+          - not_null
+      - name: address_count
+        description: Number of addresses on file for the customer.
+
+  - name: int_shopify__orders_enriched
+    description: >-
+      One row per Shopify order with line item counts and a refund/return summary. Refunds are
+      attributed to the order (not the refund date). Filter on is_marketing_eligible for ROAS / MMM.
+    columns:
+      - name: order_id
+        data_tests:
+          - unique
+          - not_null
+      - name: units_ordered
+        data_tests:
+          - not_null
+      - name: refunded_subtotal
+        description: Refunded merchandise amount (net of discounts, before tax); 0 when no refund.
+        data_tests:
+          - not_null
+      - name: net_sales
+        description: subtotal_price minus refunded_subtotal. Main revenue measure for ROAS.
+        data_tests:
+          - not_null
+      - name: net_total_price
+        description: total_price minus refunded_amount (refunded merchandise + tax). Shipping is never refunded here.
+      - name: days_to_first_refund
+        description: Days between the order and its first refund; null when not refunded.
+      - name: return_reasons
+        description: Distinct return reasons across the order's refunds, comma-separated.
+      - name: is_fully_refunded
+        description: All ordered units were refunded.
+      - name: is_partially_refunded
+        description: Some, but not all, ordered units were refunded.
+      - name: is_marketing_eligible
+        description: Not a test, cancelled or wholesale order. Use this filter for ROAS, attribution and MMM.
+        data_tests:
+          - not_null

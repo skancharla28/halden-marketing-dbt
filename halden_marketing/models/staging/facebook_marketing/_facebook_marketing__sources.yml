@@ -1,0 +1,773 @@
+version: 2
+sources:
+  - name: facebook_marketing
+    database: mkt_raw
+    schema: facebook_marketing
+    description: >-
+      Raw facebook_marketing data. Source system: Meta Marketing API (Facebook + Instagram ads) via Airbyte
+      source-facebook-marketing.
+    tables:
+      - name: ad_account
+        description: >-
+          The Meta ad account that runs all Facebook and Instagram campaigns (account settings, currency,
+          timezone, lifetime spend). Grain: One row per ad account. Joins: account_id -> campaigns.account_id,
+          ads_insights.account_id. Gotchas: `id` is prefixed with `act_`; other tables use the bare numeric
+          `account_id`.
+        columns:
+          - name: id
+            description: Account id with act_ prefix (act_<account_id>). Use account_id for joins.
+            data_type: VARCHAR
+          - name: account_id
+            description: Meta ad account id (numeric, without the act_ prefix). Join key to ad_account.
+            data_type: VARCHAR
+            data_tests:
+              - not_null
+              - unique
+          - name: name
+            description: Ad account name.
+            data_type: VARCHAR
+          - name: currency
+            description: ISO currency code (USD).
+            data_type: VARCHAR
+          - name: timezone_name
+            description: Account timezone.
+            data_type: VARCHAR
+          - name: timezone_offset_hours_utc
+            description: Account timezone offset from UTC in hours.
+            data_type: DOUBLE
+          - name: account_status
+            description: 1 = active.
+            data_type: BIGINT
+          - name: business_country_code
+            description: Business country.
+            data_type: VARCHAR
+          - name: created_time
+            description: When the object (ad/campaign) was created.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: amount_spent
+            description: Lifetime spend in cents (string), includes spend before this dataset.
+            data_type: VARCHAR
+          - name: spend_cap
+            description: Account spending limit (0 = none).
+            data_type: VARCHAR
+          - name: min_daily_budget
+            description: Minimum daily budget allowed (cents).
+            data_type: BIGINT
+          - name: is_personal
+            description: Personal account flag.
+            data_type: BIGINT
+          - name: _airbyte_raw_id
+            description: >-
+              Unique id Airbyte assigns to each record it loads. Lineage/debugging only; not a business
+              key.
+            data_type: VARCHAR
+          - name: _airbyte_extracted_at
+            description: >-
+              UTC time Airbyte extracted this record from the source API. Use to deduplicate (keep latest
+              per business key) and for source freshness tests.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: _airbyte_meta
+            description: >-
+              JSON with sync metadata: {changes: [...type-casting issues...], sync_id}. Check `changes`
+              for fields Airbyte could not type-cast.
+            data_type: JSON
+          - name: _airbyte_generation_id
+            description: >-
+              Airbyte refresh generation counter (increments on full refresh). Rarely needed; can filter
+              to the latest generation after a refresh.
+            data_type: BIGINT
+      - name: ad_creatives
+        description: >-
+          {% raw %}Creative assets behind each ad: format, copy, call to action, destination link and
+          the URL tag template that produces UTMs. Grain: One row per creative. Joins: id -> ads.creative->>'id'.
+          Gotchas: `url_tags` contains Meta macros ({{campaign.name}}, {{site_source_name}}) that are
+          resolved at click time; three different UTM conventions exist across campaigns.{% endraw %}
+        columns:
+          - name: id
+            description: Creative id. Joins to ads.creative->>'id'.
+            data_type: BIGINT
+            data_tests:
+              - not_null
+              - unique
+          - name: name
+            description: Creative name (ad name + ' - Creative').
+            data_type: VARCHAR
+          - name: account_id
+            description: Meta ad account id (numeric, without the act_ prefix). Join key to ad_account.
+            data_type: VARCHAR
+          - name: object_type
+            description: 'Creative format: VIDEO, PHOTO, SHARE (carousel / catalog). Format analysis.'
+            data_type: VARCHAR
+          - name: title
+            description: Headline text.
+            data_type: VARCHAR
+          - name: body
+            description: Primary text.
+            data_type: VARCHAR
+          - name: call_to_action_type
+            description: CTA button (SHOP_NOW).
+            data_type: VARCHAR
+          - name: url_tags
+            description: >-
+              {% raw %}UTM template appended to the link, with Meta macros like {{campaign.name}}, {{adset.name}},
+              {{ad.name}}, {{campaign.id}}, {{site_source_name}}. Explains the UTM values seen in Shopify/GA4.{%
+              endraw %}
+            data_type: VARCHAR
+          - name: link_url
+            description: Destination URL (landing page) before UTMs.
+            data_type: VARCHAR
+          - name: video_id
+            description: Meta video asset id (video creatives).
+            data_type: VARCHAR
+          - name: image_url
+            description: Image asset URL.
+            data_type: VARCHAR
+          - name: thumbnail_url
+            description: Thumbnail URL.
+            data_type: VARCHAR
+          - name: status
+            description: Creative status.
+            data_type: VARCHAR
+          - name: object_story_spec
+            description: 'JSON: page/Instagram account and link/video data used to build the post.'
+            data_type: JSON
+          - name: _airbyte_raw_id
+            description: >-
+              Unique id Airbyte assigns to each record it loads. Lineage/debugging only; not a business
+              key.
+            data_type: VARCHAR
+          - name: _airbyte_extracted_at
+            description: >-
+              UTC time Airbyte extracted this record from the source API. Use to deduplicate (keep latest
+              per business key) and for source freshness tests.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: _airbyte_meta
+            description: >-
+              JSON with sync metadata: {changes: [...type-casting issues...], sync_id}. Check `changes`
+              for fields Airbyte could not type-cast.
+            data_type: JSON
+          - name: _airbyte_generation_id
+            description: >-
+              Airbyte refresh generation counter (increments on full refresh). Rarely needed; can filter
+              to the latest generation after a refresh.
+            data_type: BIGINT
+      - name: ad_sets
+        description: >-
+          Meta ad sets (audience/targeting + optimization level under a campaign). Grain: One row per
+          ad set (current state). Joins: id -> ads.adset_id, ads_insights.adset_id; campaign_id -> campaigns.id.
+          Gotchas: `targeting` is JSON; ad set name is also passed as `utm_term` on most campaigns.
+        columns:
+          - name: id
+            description: Meta ad set id. Joins to ads_insights.adset_id.
+            data_type: BIGINT
+            data_tests:
+              - not_null
+              - unique
+          - name: name
+            description: Ad set (audience) name. Passed as utm_term on most campaigns.
+            data_type: VARCHAR
+          - name: campaign_id
+            description: Meta campaign id. Join to campaigns.id; equals utm_id in landing URLs for most
+              campaigns.
+            data_type: BIGINT
+          - name: account_id
+            description: Meta ad account id (numeric, without the act_ prefix). Join key to ad_account.
+            data_type: VARCHAR
+          - name: status
+            description: 'Configured status: ACTIVE or PAUSED.'
+            data_type: VARCHAR
+          - name: effective_status
+            description: Status after considering parent objects (e.g. CAMPAIGN_PAUSED, ADSET_PAUSED).
+            data_type: VARCHAR
+          - name: optimization_goal
+            description: What delivery optimizes for (OFFSITE_CONVERSIONS = website purchases).
+            data_type: VARCHAR
+          - name: billing_event
+            description: What Meta bills on (IMPRESSIONS).
+            data_type: VARCHAR
+          - name: bid_strategy
+            description: Bid strategy, e.g. LOWEST_COST_WITHOUT_CAP.
+            data_type: VARCHAR
+          - name: daily_budget
+            description: Daily budget in CENTS (null when budget is set at a different level). Divide
+              by 100.
+            data_type: INTEGER
+          - name: lifetime_budget
+            description: Lifetime budget in cents.
+            data_type: INTEGER
+          - name: targeting
+            description: >-
+              JSON targeting spec: geo, age_min/max, genders, custom_audiences, interests. Audience analysis.
+            data_type: JSON
+          - name: promoted_object
+            description: 'JSON: pixel id and conversion event the ad set optimizes for (PURCHASE).'
+            data_type: JSON
+          - name: created_time
+            description: When the object (ad/campaign) was created.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: start_time
+            description: Scheduled start.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: end_time
+            description: Scheduled end (null = evergreen).
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: updated_time
+            description: When the object or the insight row was last updated.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: _airbyte_raw_id
+            description: >-
+              Unique id Airbyte assigns to each record it loads. Lineage/debugging only; not a business
+              key.
+            data_type: VARCHAR
+          - name: _airbyte_extracted_at
+            description: >-
+              UTC time Airbyte extracted this record from the source API. Use to deduplicate (keep latest
+              per business key) and for source freshness tests.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: _airbyte_meta
+            description: >-
+              JSON with sync metadata: {changes: [...type-casting issues...], sync_id}. Check `changes`
+              for fields Airbyte could not type-cast.
+            data_type: JSON
+          - name: _airbyte_generation_id
+            description: >-
+              Airbyte refresh generation counter (increments on full refresh). Rarely needed; can filter
+              to the latest generation after a refresh.
+            data_type: BIGINT
+      - name: ads
+        description: >-
+          Meta ads (individual creatives running in an ad set). New ads launch every few weeks as creatives
+          refresh. Grain: One row per ad (current state). Joins: id -> ads_insights.ad_id; adset_id ->
+          ad_sets.id; campaign_id -> campaigns.id; creative.id -> ad_creatives.id. Gotchas: Ad name is
+          passed as `utm_content` in landing URLs. `creative` is JSON holding the creative id.
+        columns:
+          - name: id
+            description: Meta ad id. Joins to ads_insights.ad_id.
+            data_type: BIGINT
+            data_tests:
+              - not_null
+              - unique
+          - name: name
+            description: >-
+              Ad name: <Concept>_<Format>_<Season>_v<n>. Passed as utm_content; parse concept/format for
+              creative analysis.
+            data_type: VARCHAR
+          - name: account_id
+            description: Meta ad account id (numeric, without the act_ prefix). Join key to ad_account.
+            data_type: VARCHAR
+          - name: adset_id
+            description: Meta ad set id. Join to ad_sets.id.
+            data_type: BIGINT
+          - name: campaign_id
+            description: Meta campaign id. Join to campaigns.id; equals utm_id in landing URLs for most
+              campaigns.
+            data_type: BIGINT
+          - name: status
+            description: 'Configured status: ACTIVE or PAUSED.'
+            data_type: VARCHAR
+          - name: effective_status
+            description: Status after considering parent objects (e.g. CAMPAIGN_PAUSED, ADSET_PAUSED).
+            data_type: VARCHAR
+          - name: creative
+            description: JSON {id} of the creative used by the ad. Join to ad_creatives.id via creative->>'id'.
+            data_type: JSON
+          - name: tracking_specs
+            description: JSON tracking configuration (pixel).
+            data_type: JSON
+          - name: bid_type
+            description: Bid type (ABSOLUTE_OCPM).
+            data_type: VARCHAR
+          - name: configured_status
+            description: Status set by the advertiser.
+            data_type: VARCHAR
+          - name: created_time
+            description: When the object (ad/campaign) was created.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: updated_time
+            description: When the object or the insight row was last updated.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: _airbyte_raw_id
+            description: >-
+              Unique id Airbyte assigns to each record it loads. Lineage/debugging only; not a business
+              key.
+            data_type: VARCHAR
+          - name: _airbyte_extracted_at
+            description: >-
+              UTC time Airbyte extracted this record from the source API. Use to deduplicate (keep latest
+              per business key) and for source freshness tests.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: _airbyte_meta
+            description: >-
+              JSON with sync metadata: {changes: [...type-casting issues...], sync_id}. Check `changes`
+              for fields Airbyte could not type-cast.
+            data_type: JSON
+          - name: _airbyte_generation_id
+            description: >-
+              Airbyte refresh generation counter (increments on full refresh). Rarely needed; can filter
+              to the latest generation after a refresh.
+            data_type: BIGINT
+      - name: ads_insights
+        description: >-
+          Daily Meta ad performance: spend, impressions, reach, clicks and platform-reported conversions.
+          Facebook and Instagram are COMBINED here. Grain: One row per ad per day. Joins: ad_id -> ads.id;
+          adset_id -> ad_sets.id; campaign_id -> campaigns.id. Gotchas: Conversions live inside JSON arrays
+          (`actions`, `action_values`) keyed by action_type with attribution-window keys; use one purchase
+          action_type (e.g. omni_purchase) to avoid double counting. Platform conversions overlap with
+          other platforms and do not reconcile to Shopify. `clicks` = all clicks; `inline_link_clicks`
+          = clicks to the website.
+        columns:
+          - name: account_id
+            description: Meta ad account id (numeric, without the act_ prefix). Join key to ad_account.
+            data_type: VARCHAR
+          - name: account_name
+            description: Ad account name.
+            data_type: VARCHAR
+          - name: account_currency
+            description: Currency of spend/value metrics (USD).
+            data_type: VARCHAR
+          - name: campaign_id
+            description: Meta campaign id. Join to campaigns.id; equals utm_id in landing URLs for most
+              campaigns.
+            data_type: VARCHAR
+          - name: campaign_name
+            description: >-
+              Campaign name. Prefix `PROS |` = prospecting, `RT |` = retargeting. Derive channel (Meta
+              Prospecting / Meta Retargeting) from the prefix.
+            data_type: VARCHAR
+          - name: adset_id
+            description: Meta ad set id. Join to ad_sets.id.
+            data_type: VARCHAR
+          - name: adset_name
+            description: Ad set (audience) name. Passed as utm_term on most campaigns.
+            data_type: VARCHAR
+          - name: ad_id
+            description: Meta ad id. Join to ads.id.
+            data_type: VARCHAR
+            data_tests:
+              - not_null
+          - name: ad_name
+            description: >-
+              Ad name: <Concept>_<Format>_<Season>_v<n>. Passed as utm_content; parse concept/format for
+              creative analysis.
+            data_type: VARCHAR
+          - name: date_start
+            description: Reporting date (account timezone, America/New_York). Daily grain date.
+            data_type: DATE
+            data_tests:
+              - not_null
+          - name: date_stop
+            description: End of reporting range; equals date_start for daily rows.
+            data_type: DATE
+          - name: objective
+            description: Campaign objective (OUTCOME_SALES).
+            data_type: VARCHAR
+          - name: optimization_goal
+            description: What delivery optimizes for (OFFSITE_CONVERSIONS = website purchases).
+            data_type: VARCHAR
+          - name: buying_type
+            description: AUCTION buying.
+            data_type: VARCHAR
+          - name: attribution_setting
+            description: >-
+              Attribution setting used for `value` in actions: 7d_click_1d_view. Platform conversions
+              include 1-day view-throughs.
+            data_type: VARCHAR
+          - name: impressions
+            description: Times ads were shown. Additive.
+            data_type: BIGINT
+          - name: reach
+            description: Unique people reached on that day for that row. NOT additive across rows/days.
+            data_type: BIGINT
+          - name: frequency
+            description: impressions / reach. Recompute after aggregating; do not sum.
+            data_type: DOUBLE
+          - name: spend
+            description: Amount spent (USD). Primary cost metric; sum for campaign/channel spend.
+            data_type: DOUBLE
+          - name: clicks
+            description: >-
+              All clicks (link clicks plus likes, comments, profile clicks, etc.). Use inline_link_clicks
+              for website traffic.
+            data_type: BIGINT
+          - name: unique_clicks
+            description: Unique people who clicked. Not additive.
+            data_type: BIGINT
+          - name: inline_link_clicks
+            description: >-
+              Clicks on links to the website (drive sessions). Use for CPC and click-to-session comparisons
+              with GA4.
+            data_type: BIGINT
+          - name: unique_inline_link_clicks
+            description: Unique people with a link click. Not additive.
+            data_type: BIGINT
+          - name: inline_post_engagement
+            description: Total engagements on the ad post.
+            data_type: BIGINT
+          - name: cpc
+            description: spend / clicks (all clicks). Recompute after aggregating.
+            data_type: DOUBLE
+          - name: cpm
+            description: spend per 1,000 impressions. Recompute after aggregating.
+            data_type: DOUBLE
+          - name: cpp
+            description: Cost per 1,000 people reached.
+            data_type: DOUBLE
+          - name: ctr
+            description: clicks / impressions * 100 (all clicks). Recompute after aggregating.
+            data_type: DOUBLE
+          - name: inline_link_click_ctr
+            description: inline_link_clicks / impressions * 100.
+            data_type: DOUBLE
+          - name: cost_per_inline_link_click
+            description: spend / inline_link_clicks.
+            data_type: DOUBLE
+          - name: actions
+            description: >-
+              JSON array of {action_type, value, 1d_click, 7d_click, 28d_click, 1d_view, 7d_view}. action_types
+              include link_click, landing_page_view, view_content, add_to_cart, initiate_checkout, purchase,
+              omni_purchase, offsite_conversion.fb_pixel_purchase, post_engagement, video_view. Unnest
+              in staging; pick ONE purchase action_type (omni_purchase) to avoid triple counting. `value`
+              = 7d_click + 1d_view.
+            data_type: JSON
+          - name: action_values
+            description: >-
+              JSON array of conversion VALUES (revenue) per purchase action_type with the same attribution-window
+              keys. Platform-reported revenue for platform ROAS.
+            data_type: JSON
+          - name: cost_per_action_type
+            description: 'JSON array: spend / action count per action_type. Recompute instead after aggregation.'
+            data_type: JSON
+          - name: purchase_roas
+            description: 'JSON array: platform-reported purchase value / spend. Recompute instead.'
+            data_type: JSON
+          - name: website_purchase_roas
+            description: 'JSON array: website purchase ROAS (same as purchase_roas here).'
+            data_type: JSON
+          - name: outbound_clicks
+            description: 'JSON array: clicks that leave Meta to the website.'
+            data_type: JSON
+          - name: social_spend
+            description: Spend on impressions with social context (always 0 here).
+            data_type: DOUBLE
+          - name: video_play_actions
+            description: 'JSON array: video plays (video ads only).'
+            data_type: JSON
+          - name: video_p25_watched_actions
+            description: 'JSON array: video views reaching 25%. Creative hook/hold analysis.'
+            data_type: JSON
+          - name: video_p50_watched_actions
+            description: 'JSON array: video views reaching 50%.'
+            data_type: JSON
+          - name: video_p75_watched_actions
+            description: 'JSON array: video views reaching 75%.'
+            data_type: JSON
+          - name: video_p100_watched_actions
+            description: 'JSON array: video views completed.'
+            data_type: JSON
+          - name: video_thruplay_watched_actions
+            description: 'JSON array: ThruPlays (15s or complete).'
+            data_type: JSON
+          - name: quality_ranking
+            description: Meta ad relevance diagnostic vs competitors (UNKNOWN when too few impressions).
+            data_type: VARCHAR
+          - name: engagement_rate_ranking
+            description: Meta engagement rate diagnostic.
+            data_type: VARCHAR
+          - name: conversion_rate_ranking
+            description: Meta conversion rate diagnostic.
+            data_type: VARCHAR
+          - name: created_time
+            description: When the object (ad/campaign) was created.
+            data_type: DATE
+          - name: updated_time
+            description: When the object or the insight row was last updated.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: _airbyte_raw_id
+            description: >-
+              Unique id Airbyte assigns to each record it loads. Lineage/debugging only; not a business
+              key.
+            data_type: VARCHAR
+          - name: _airbyte_extracted_at
+            description: >-
+              UTC time Airbyte extracted this record from the source API. Use to deduplicate (keep latest
+              per business key) and for source freshness tests.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: _airbyte_meta
+            description: >-
+              JSON with sync metadata: {changes: [...type-casting issues...], sync_id}. Check `changes`
+              for fields Airbyte could not type-cast.
+            data_type: JSON
+          - name: _airbyte_generation_id
+            description: >-
+              Airbyte refresh generation counter (increments on full refresh). Rarely needed; can filter
+              to the latest generation after a refresh.
+            data_type: BIGINT
+      - name: ads_insights_platform_and_device
+        description: >-
+          Same Meta daily metrics broken down by publisher_platform (facebook, INSTAGRAM, audience_network,
+          messenger), placement and device. This is where Instagram-only performance lives. Grain: One
+          row per ad per day per publisher_platform + platform_position + impression_device. Joins: ad_id
+          -> ads.id; sums of spend/impressions per ad-day equal ads_insights. Gotchas: Do not union with
+          ads_insights (it would double count). `reach` is not additive across breakdown rows. Only link_click,
+          landing_page_view and purchase actions are included in `actions` here.
+        columns:
+          - name: account_id
+            description: Meta ad account id (numeric, without the act_ prefix). Join key to ad_account.
+            data_type: VARCHAR
+          - name: account_name
+            description: Ad account name.
+            data_type: VARCHAR
+          - name: account_currency
+            description: Currency of spend/value metrics (USD).
+            data_type: VARCHAR
+          - name: campaign_id
+            description: Meta campaign id. Join to campaigns.id; equals utm_id in landing URLs for most
+              campaigns.
+            data_type: VARCHAR
+          - name: campaign_name
+            description: >-
+              Campaign name. Prefix `PROS |` = prospecting, `RT |` = retargeting. Derive channel (Meta
+              Prospecting / Meta Retargeting) from the prefix.
+            data_type: VARCHAR
+          - name: adset_id
+            description: Meta ad set id. Join to ad_sets.id.
+            data_type: VARCHAR
+          - name: adset_name
+            description: Ad set (audience) name. Passed as utm_term on most campaigns.
+            data_type: VARCHAR
+          - name: ad_id
+            description: Meta ad id. Join to ads.id.
+            data_type: VARCHAR
+            data_tests:
+              - not_null
+          - name: ad_name
+            description: >-
+              Ad name: <Concept>_<Format>_<Season>_v<n>. Passed as utm_content; parse concept/format for
+              creative analysis.
+            data_type: VARCHAR
+          - name: date_start
+            description: Reporting date (account timezone, America/New_York). Daily grain date.
+            data_type: DATE
+            data_tests:
+              - not_null
+          - name: date_stop
+            description: End of reporting range; equals date_start for daily rows.
+            data_type: DATE
+          - name: objective
+            description: Campaign objective (OUTCOME_SALES).
+            data_type: VARCHAR
+          - name: optimization_goal
+            description: What delivery optimizes for (OFFSITE_CONVERSIONS = website purchases).
+            data_type: VARCHAR
+          - name: buying_type
+            description: AUCTION buying.
+            data_type: VARCHAR
+          - name: attribution_setting
+            description: >-
+              Attribution setting used for `value` in actions: 7d_click_1d_view. Platform conversions
+              include 1-day view-throughs.
+            data_type: VARCHAR
+          - name: impressions
+            description: Times ads were shown. Additive.
+            data_type: BIGINT
+          - name: reach
+            description: Unique people reached on that day for that row. NOT additive across rows/days.
+            data_type: BIGINT
+          - name: frequency
+            description: impressions / reach. Recompute after aggregating; do not sum.
+            data_type: DOUBLE
+          - name: spend
+            description: Amount spent (USD). Primary cost metric; sum for campaign/channel spend.
+            data_type: DOUBLE
+          - name: clicks
+            description: >-
+              All clicks (link clicks plus likes, comments, profile clicks, etc.). Use inline_link_clicks
+              for website traffic.
+            data_type: BIGINT
+          - name: unique_clicks
+            description: Unique people who clicked. Not additive.
+            data_type: BIGINT
+          - name: inline_link_clicks
+            description: >-
+              Clicks on links to the website (drive sessions). Use for CPC and click-to-session comparisons
+              with GA4.
+            data_type: BIGINT
+          - name: unique_inline_link_clicks
+            description: Unique people with a link click. Not additive.
+            data_type: BIGINT
+          - name: inline_post_engagement
+            description: Total engagements on the ad post.
+            data_type: BIGINT
+          - name: cpc
+            description: spend / clicks (all clicks). Recompute after aggregating.
+            data_type: DOUBLE
+          - name: cpm
+            description: spend per 1,000 impressions. Recompute after aggregating.
+            data_type: DOUBLE
+          - name: cpp
+            description: Cost per 1,000 people reached.
+            data_type: DOUBLE
+          - name: ctr
+            description: clicks / impressions * 100 (all clicks). Recompute after aggregating.
+            data_type: DOUBLE
+          - name: inline_link_click_ctr
+            description: inline_link_clicks / impressions * 100.
+            data_type: DOUBLE
+          - name: cost_per_inline_link_click
+            description: spend / inline_link_clicks.
+            data_type: DOUBLE
+          - name: actions
+            description: >-
+              JSON array of {action_type, value, 1d_click, 7d_click, 28d_click, 1d_view, 7d_view}. action_types
+              include link_click, landing_page_view, view_content, add_to_cart, initiate_checkout, purchase,
+              omni_purchase, offsite_conversion.fb_pixel_purchase, post_engagement, video_view. Unnest
+              in staging; pick ONE purchase action_type (omni_purchase) to avoid triple counting. `value`
+              = 7d_click + 1d_view.
+            data_type: JSON
+          - name: action_values
+            description: >-
+              JSON array of conversion VALUES (revenue) per purchase action_type with the same attribution-window
+              keys. Platform-reported revenue for platform ROAS.
+            data_type: JSON
+          - name: cost_per_action_type
+            description: 'JSON array: spend / action count per action_type. Recompute instead after aggregation.'
+            data_type: JSON
+          - name: purchase_roas
+            description: 'JSON array: platform-reported purchase value / spend. Recompute instead.'
+            data_type: JSON
+          - name: website_purchase_roas
+            description: 'JSON array: website purchase ROAS (same as purchase_roas here).'
+            data_type: JSON
+          - name: outbound_clicks
+            description: 'JSON array: clicks that leave Meta to the website.'
+            data_type: JSON
+          - name: social_spend
+            description: Spend on impressions with social context (always 0 here).
+            data_type: DOUBLE
+          - name: publisher_platform
+            description: >-
+              Where the ad ran: facebook, instagram, audience_network, messenger. Filter = 'instagram'
+              for Instagram-only performance.
+            data_type: VARCHAR
+            data_tests:
+              - not_null
+          - name: platform_position
+            description: >-
+              Placement: feed, facebook_reels, facebook_stories, marketplace, video_feeds, right_hand_column,
+              instagram_stories, instagram_reels, instagram_explore, an_classic, messenger_inbox. Placement
+              analysis.
+            data_type: VARCHAR
+            data_tests:
+              - not_null
+          - name: impression_device
+            description: 'Device: iphone, android_smartphone, desktop, ipad.'
+            data_type: VARCHAR
+            data_tests:
+              - not_null
+          - name: created_time
+            description: When the object (ad/campaign) was created.
+            data_type: DATE
+          - name: updated_time
+            description: When the object or the insight row was last updated.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: _airbyte_raw_id
+            description: >-
+              Unique id Airbyte assigns to each record it loads. Lineage/debugging only; not a business
+              key.
+            data_type: VARCHAR
+          - name: _airbyte_extracted_at
+            description: >-
+              UTC time Airbyte extracted this record from the source API. Use to deduplicate (keep latest
+              per business key) and for source freshness tests.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: _airbyte_meta
+            description: >-
+              JSON with sync metadata: {changes: [...type-casting issues...], sync_id}. Check `changes`
+              for fields Airbyte could not type-cast.
+            data_type: JSON
+          - name: _airbyte_generation_id
+            description: >-
+              Airbyte refresh generation counter (increments on full refresh). Rarely needed; can filter
+              to the latest generation after a refresh.
+            data_type: BIGINT
+      - name: campaigns
+        description: >-
+          Meta campaign settings: name, objective, status, budget, schedule. Campaign names follow a convention:
+          `PROS | ...` = prospecting, `RT | ...` = retargeting. Grain: One row per campaign (current state).
+          Joins: id -> ad_sets.campaign_id, ads.campaign_id, ads_insights.campaign_id; also equals `utm_id`
+          in landing URLs. Gotchas: Settings are current-state only (no history). Seasonal campaigns have
+          stop_time set and status PAUSED.
+        columns:
+          - name: id
+            description: Meta campaign id. Joins to ads_insights.campaign_id and utm_id.
+            data_type: BIGINT
+            data_tests:
+              - not_null
+              - unique
+          - name: name
+            description: >-
+              Campaign name. Prefix `PROS |` = prospecting, `RT |` = retargeting. Derive channel (Meta
+              Prospecting / Meta Retargeting) from the prefix.
+            data_type: VARCHAR
+          - name: account_id
+            description: Meta ad account id (numeric, without the act_ prefix). Join key to ad_account.
+            data_type: VARCHAR
+          - name: objective
+            description: Campaign objective (OUTCOME_SALES).
+            data_type: VARCHAR
+          - name: status
+            description: 'Configured status: ACTIVE or PAUSED.'
+            data_type: VARCHAR
+          - name: effective_status
+            description: Status after considering parent objects (e.g. CAMPAIGN_PAUSED, ADSET_PAUSED).
+            data_type: VARCHAR
+          - name: buying_type
+            description: AUCTION buying.
+            data_type: VARCHAR
+          - name: bid_strategy
+            description: Bid strategy, e.g. LOWEST_COST_WITHOUT_CAP.
+            data_type: VARCHAR
+          - name: daily_budget
+            description: Daily budget in CENTS (null when budget is set at a different level). Divide
+              by 100.
+            data_type: DOUBLE
+          - name: smart_promotion_type
+            description: >-
+              {% raw %}AUTOMATED_SHOPPING_ADS = Advantage+ Shopping campaign; GUIDED_CREATION = manual.
+              ASC campaigns use utm_source={{site_source_name}} (fb/ig/an/msg).{% endraw %}
+            data_type: VARCHAR
+          - name: special_ad_categories
+            description: JSON array of special ad categories (empty).
+            data_type: JSON
+          - name: created_time
+            description: When the object (ad/campaign) was created.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: start_time
+            description: Scheduled start.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: stop_time
+            description: Scheduled stop (null = evergreen).
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: updated_time
+            description: When the object or the insight row was last updated.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: _airbyte_raw_id
+            description: >-
+              Unique id Airbyte assigns to each record it loads. Lineage/debugging only; not a business
+              key.
+            data_type: VARCHAR
+          - name: _airbyte_extracted_at
+            description: >-
+              UTC time Airbyte extracted this record from the source API. Use to deduplicate (keep latest
+              per business key) and for source freshness tests.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: _airbyte_meta
+            description: >-
+              JSON with sync metadata: {changes: [...type-casting issues...], sync_id}. Check `changes`
+              for fields Airbyte could not type-cast.
+            data_type: JSON
+          - name: _airbyte_generation_id
+            description: >-
+              Airbyte refresh generation counter (increments on full refresh). Rarely needed; can filter
+              to the latest generation after a refresh.
+            data_type: BIGINT

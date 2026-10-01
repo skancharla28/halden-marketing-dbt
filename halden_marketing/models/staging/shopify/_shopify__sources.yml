@@ -1,0 +1,1009 @@
+version: 2
+sources:
+  - name: shopify
+    database: mkt_raw
+    schema: shopify
+    description: >-
+      Raw shopify data. Source system: Shopify Admin API via Airbyte source-shopify (GraphQL Order.customerJourneySummary).
+    tables:
+      - name: customer_journey_summary
+        description: >-
+          Shopify's own first-visit / last-visit summary per order: landing page, referrer, UTMs, number
+          of visits and days to conversion. Grain: One row per order. Joins: order_id -> orders.id. Gotchas:
+          Not available for every order (firstVisit/lastVisit null when the journey was not tracked).
+          Check that your Airbyte connector version exposes this stream.
+        columns:
+          - name: order_id
+            description: Shopify order id. Join to orders.id.
+            data_type: BIGINT
+            data_tests:
+              - not_null
+              - unique
+          - name: admin_graphql_api_id
+            description: Shopify GraphQL global id (gid://shopify/<Type>/<id>). Use `id` for joins.
+            data_type: VARCHAR
+          - name: created_at
+            description: Order created timestamp.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: updated_at
+            description: Order updated timestamp.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: customer_journey_summary
+            description: >-
+              JSON: {customerOrderIndex, daysToConversion, firstVisit, lastVisit, momentsCount, ready}.
+              Each visit has landingPage, referrerUrl, source, sourceType, occurredAt, utmParameters{source,
+              medium, campaign, content, term}. First-touch / last-touch attribution; visits null when
+              not tracked.
+            data_type: JSON
+          - name: shop_url
+            description: >-
+              Shopify store domain this record belongs to. Constant here; useful when loading several
+              stores.
+            data_type: VARCHAR
+          - name: _airbyte_raw_id
+            description: >-
+              Unique id Airbyte assigns to each record it loads. Lineage/debugging only; not a business
+              key.
+            data_type: VARCHAR
+          - name: _airbyte_extracted_at
+            description: >-
+              UTC time Airbyte extracted this record from the source API. Use to deduplicate (keep latest
+              per business key) and for source freshness tests.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: _airbyte_meta
+            description: >-
+              JSON with sync metadata: {changes: [...type-casting issues...], sync_id}. Check `changes`
+              for fields Airbyte could not type-cast.
+            data_type: JSON
+          - name: _airbyte_generation_id
+            description: >-
+              Airbyte refresh generation counter (increments on full refresh). Rarely needed; can filter
+              to the latest generation after a refresh.
+            data_type: BIGINT
+      - name: customers
+        description: >-
+          Customers who placed or updated an order in the sync window, with lifetime order count, total
+          spent and marketing consent. Grain: One row per customer. Joins: id -> orders.customer->>'id';
+          last_order_id -> orders.id. Gotchas: Customers created before 2024-10-01 keep historical orders_count/total_spent
+          that include orders not in this dataset. Money fields are strings.
+        columns:
+          - name: id
+            description: Shopify customer id. Join to orders.customer->>'id'.
+            data_type: BIGINT
+            data_tests:
+              - not_null
+              - unique
+          - name: email
+            description: Customer email (fake @example domains). PII in real data; hash before use.
+            data_type: VARCHAR
+          - name: first_name
+            description: First name. PII.
+            data_type: VARCHAR
+          - name: last_name
+            description: Last name. PII.
+            data_type: VARCHAR
+          - name: accepts_marketing
+            description: Email marketing opt-in.
+            data_type: BOOLEAN
+          - name: accepts_marketing_updated_at
+            description: When opt-in last changed.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: marketing_opt_in_level
+            description: single_opt_in.
+            data_type: VARCHAR
+          - name: email_marketing_consent
+            description: JSON {state, opt_in_level, consent_updated_at}.
+            data_type: JSON
+          - name: sms_marketing_consent
+            description: SMS consent (null).
+            data_type: INTEGER
+          - name: created_at
+            description: >-
+              When the customer record was created (usually at first order or signup). Customer acquisition
+              date / cohort.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: updated_at
+            description: When the record was last updated. Incremental sync cursor.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: orders_count
+            description: >-
+              Lifetime number of orders INCLUDING orders before 2024-10-01. Do not assume all orders are
+              in orders table.
+            data_type: BIGINT
+          - name: state
+            description: Account state (enabled).
+            data_type: VARCHAR
+          - name: total_spent
+            description: Lifetime spend (string) incl. history before the dataset.
+            data_type: VARCHAR
+          - name: last_order_id
+            description: Id of the customer's latest order. Join to orders.id.
+            data_type: BIGINT
+          - name: last_order_name
+            description: Name of latest order (#10457).
+            data_type: VARCHAR
+          - name: note
+            description: Free-text note.
+            data_type: INTEGER
+          - name: verified_email
+            description: Email verified flag.
+            data_type: BOOLEAN
+          - name: multipass_identifier
+            description: Multipass SSO id (null).
+            data_type: INTEGER
+          - name: tax_exempt
+            description: Tax exempt flag.
+            data_type: BOOLEAN
+          - name: tags
+            description: >-
+              Comma-separated tags (customers: VIP; orders: test, wholesale-team-order; products: type/gender/season).
+            data_type: VARCHAR
+          - name: currency
+            description: Customer currency.
+            data_type: VARCHAR
+          - name: phone
+            description: Phone (null).
+            data_type: INTEGER
+          - name: addresses
+            description: JSON array of addresses.
+            data_type: JSON
+          - name: default_address
+            description: JSON default address (city, province_code, zip...). Geo analysis.
+            data_type: JSON
+          - name: tax_exemptions
+            description: JSON array (empty).
+            data_type: JSON
+          - name: admin_graphql_api_id
+            description: Shopify GraphQL global id (gid://shopify/<Type>/<id>). Use `id` for joins.
+            data_type: VARCHAR
+          - name: shop_url
+            description: >-
+              Shopify store domain this record belongs to. Constant here; useful when loading several
+              stores.
+            data_type: VARCHAR
+          - name: _airbyte_raw_id
+            description: >-
+              Unique id Airbyte assigns to each record it loads. Lineage/debugging only; not a business
+              key.
+            data_type: VARCHAR
+          - name: _airbyte_extracted_at
+            description: >-
+              UTC time Airbyte extracted this record from the source API. Use to deduplicate (keep latest
+              per business key) and for source freshness tests.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: _airbyte_meta
+            description: >-
+              JSON with sync metadata: {changes: [...type-casting issues...], sync_id}. Check `changes`
+              for fields Airbyte could not type-cast.
+            data_type: JSON
+          - name: _airbyte_generation_id
+            description: >-
+              Airbyte refresh generation counter (increments on full refresh). Rarely needed; can filter
+              to the latest generation after a refresh.
+            data_type: BIGINT
+      - name: discount_codes
+        description: >-
+          Discount codes and how often they were used: promo codes (BFCM30, SUMMER25...), WELCOME10 for
+          new customers, creator codes (TESS15...), TEAMORDER20. Grain: One row per code. Joins: code
+          -> orders.discount_codes[*].code; price_rule_id -> price_rules.id. Gotchas: Automatic discounts
+          (Winter Clearance) have no code; find them in orders.discount_applications.
+        columns:
+          - name: id
+            description: Discount code id.
+            data_type: BIGINT
+            data_tests:
+              - not_null
+              - unique
+          - name: price_rule_id
+            description: Price rule behind the code. Join to price_rules.id.
+            data_type: BIGINT
+          - name: code
+            description: Discount code text. Match to orders.discount_codes[*].code; creator codes end
+              in 15.
+            data_type: VARCHAR
+          - name: usage_count
+            description: Times the code was used.
+            data_type: BIGINT
+          - name: created_at
+            description: When the code was created.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: updated_at
+            description: When the record was last updated. Incremental sync cursor.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: shop_url
+            description: >-
+              Shopify store domain this record belongs to. Constant here; useful when loading several
+              stores.
+            data_type: VARCHAR
+          - name: _airbyte_raw_id
+            description: >-
+              Unique id Airbyte assigns to each record it loads. Lineage/debugging only; not a business
+              key.
+            data_type: VARCHAR
+          - name: _airbyte_extracted_at
+            description: >-
+              UTC time Airbyte extracted this record from the source API. Use to deduplicate (keep latest
+              per business key) and for source freshness tests.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: _airbyte_meta
+            description: >-
+              JSON with sync metadata: {changes: [...type-casting issues...], sync_id}. Check `changes`
+              for fields Airbyte could not type-cast.
+            data_type: JSON
+          - name: _airbyte_generation_id
+            description: >-
+              Airbyte refresh generation counter (increments on full refresh). Rarely needed; can filter
+              to the latest generation after a refresh.
+            data_type: BIGINT
+      - name: order_refunds
+        description: >-
+          Refunds (mostly returns) with refunded line items and amounts. Grain: One row per refund. Joins:
+          order_id -> orders.id; refund_line_items[*].line_item_id -> orders.line_items[*].id. Gotchas:
+          Refund happens 1-5 weeks after the order; recent orders have fewer refunds yet.
+        columns:
+          - name: id
+            description: Refund id.
+            data_type: BIGINT
+            data_tests:
+              - not_null
+              - unique
+          - name: order_id
+            description: Shopify order id. Join to orders.id.
+            data_type: BIGINT
+          - name: created_at
+            description: When the refund was issued (store timezone). Refund date; 1-5 weeks after the
+              order.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: processed_at
+            description: When processed.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: note
+            description: Return reason. Return reason analysis.
+            data_type: VARCHAR
+          - name: restock
+            description: Whether items were restocked.
+            data_type: BOOLEAN
+          - name: user_id
+            description: Staff user who performed the action (null).
+            data_type: INTEGER
+          - name: refund_line_items
+            description: >-
+              JSON array: line_item_id, quantity, subtotal, total_tax, restock_type. Net revenue by product.
+            data_type: JSON
+          - name: transactions
+            description: JSON array of refund payment transactions.
+            data_type: JSON
+          - name: order_adjustments
+            description: JSON array of order-level adjustments (empty).
+            data_type: JSON
+          - name: duties
+            description: JSON duties (empty).
+            data_type: JSON
+          - name: total_duties_set
+            description: Duties total (null).
+            data_type: INTEGER
+          - name: admin_graphql_api_id
+            description: Shopify GraphQL global id (gid://shopify/<Type>/<id>). Use `id` for joins.
+            data_type: VARCHAR
+          - name: shop_url
+            description: >-
+              Shopify store domain this record belongs to. Constant here; useful when loading several
+              stores.
+            data_type: VARCHAR
+          - name: _airbyte_raw_id
+            description: >-
+              Unique id Airbyte assigns to each record it loads. Lineage/debugging only; not a business
+              key.
+            data_type: VARCHAR
+          - name: _airbyte_extracted_at
+            description: >-
+              UTC time Airbyte extracted this record from the source API. Use to deduplicate (keep latest
+              per business key) and for source freshness tests.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: _airbyte_meta
+            description: >-
+              JSON with sync metadata: {changes: [...type-casting issues...], sync_id}. Check `changes`
+              for fields Airbyte could not type-cast.
+            data_type: JSON
+          - name: _airbyte_generation_id
+            description: >-
+              Airbyte refresh generation counter (increments on full refresh). Rarely needed; can filter
+              to the latest generation after a refresh.
+            data_type: BIGINT
+      - name: orders
+        description: >-
+          All web orders 2024-10-01 to 2026-09-30 with nested line items, discounts, shipping, tax, refunds,
+          and the landing page + referrer of the converting visit. Grain: One row per order. Joins: id
+          -> order_refunds.order_id, transactions.order_id, customer_journey_summary.order_id, ga4.events
+          ecommerce.transaction_id; customer->>'id' -> customers.id. Gotchas: Exclude test = true orders
+          and voided/cancelled orders. Money fields are strings. Net revenue = subtotal_price minus refunds
+          (see order_refunds). landing_site holds UTMs only for the LAST visit; inconsistent UTM casing
+          on purpose.
+        columns:
+          - name: id
+            description: Shopify order id. Primary key; equals GA4 ecommerce.transaction_id.
+            data_type: BIGINT
+            data_tests:
+              - not_null
+              - unique
+          - name: admin_graphql_api_id
+            description: Shopify GraphQL global id (gid://shopify/<Type>/<id>). Use `id` for joins.
+            data_type: VARCHAR
+          - name: app_id
+            description: Sales channel app id (580111 = Online Store).
+            data_type: BIGINT
+          - name: browser_ip
+            description: Buyer IP (null in this dataset).
+            data_type: INTEGER
+          - name: buyer_accepts_marketing
+            description: Buyer opted into marketing at checkout.
+            data_type: BOOLEAN
+          - name: cancel_reason
+            description: customer / inventory / fraud / declined, when cancelled.
+            data_type: VARCHAR
+          - name: cancelled_at
+            description: When the order was cancelled (null if not). Exclude cancelled orders from revenue.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: cart_token
+            description: Cart token.
+            data_type: VARCHAR
+          - name: checkout_id
+            description: Checkout id.
+            data_type: BIGINT
+          - name: checkout_token
+            description: Checkout token.
+            data_type: VARCHAR
+          - name: client_details
+            description: 'JSON: user_agent and browser info. Device type from user agent.'
+            data_type: JSON
+          - name: closed_at
+            description: When the order was closed/archived.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: confirmation_number
+            description: Customer-facing confirmation code.
+            data_type: VARCHAR
+          - name: confirmed
+            description: Order confirmed flag.
+            data_type: BOOLEAN
+          - name: contact_email
+            description: Contact email.
+            data_type: VARCHAR
+          - name: created_at
+            description: Order timestamp (store timezone America/New_York). Order date for daily revenue
+              / MMM.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: currency
+            description: Order currency (USD).
+            data_type: VARCHAR
+          - name: current_subtotal_price
+            description: Subtotal after discounts and AFTER refunds (string).
+            data_type: VARCHAR
+          - name: current_total_discounts
+            description: Current total discounts (string).
+            data_type: VARCHAR
+          - name: current_total_price
+            description: Total after refunds (string). Net-of-refunds revenue.
+            data_type: VARCHAR
+          - name: current_total_tax
+            description: Tax after refunds (string).
+            data_type: VARCHAR
+          - name: customer
+            description: JSON {id, email, first_name, last_name}. customer->>'id' joins to customers.id.
+            data_type: JSON
+          - name: customer_locale
+            description: Locale (en-US).
+            data_type: VARCHAR
+          - name: discount_applications
+            description: >-
+              JSON array: type (discount_code / automatic), code or title, value, value_type. Promo /
+              automatic discount analysis.
+            data_type: JSON
+          - name: discount_codes
+            description: JSON array {code, amount, type}. Code used on the order.
+            data_type: JSON
+          - name: email
+            description: Buyer email. PII.
+            data_type: VARCHAR
+          - name: estimated_taxes
+            description: Taxes are estimates flag.
+            data_type: BOOLEAN
+          - name: financial_status
+            description: paid, partially_refunded, refunded, voided. Exclude voided.
+            data_type: VARCHAR
+          - name: fulfillment_status
+            description: fulfilled or null.
+            data_type: VARCHAR
+          - name: fulfillments
+            description: JSON array of shipments (carrier, status).
+            data_type: JSON
+          - name: landing_site
+            description: >-
+              Path + query string of the landing page of the visit that converted (includes UTMs and click
+              ids: fbclid, gclid/gbraid, ttclid, li_fat_id, _kx). KEY attribution field: parse utm_* and
+              click ids; utm_id = platform campaign id.
+            data_type: VARCHAR
+          - name: landing_site_ref
+            description: Referral code from landing (null).
+            data_type: INTEGER
+          - name: line_items
+            description: >-
+              JSON array: product_id, variant_id, title, sku, quantity, price, discount_allocations, tax_lines,
+              gift_card. Unnest for product-level revenue.
+            data_type: JSON
+          - name: location_id
+            description: POS location (null for web).
+            data_type: INTEGER
+          - name: name
+            description: Order name shown to customers (#10457).
+            data_type: VARCHAR
+          - name: note
+            description: Order note (null).
+            data_type: INTEGER
+          - name: note_attributes
+            description: JSON custom checkout attributes (empty).
+            data_type: JSON
+          - name: number
+            description: Order number minus 1000.
+            data_type: BIGINT
+          - name: order_number
+            description: Sequential order number.
+            data_type: BIGINT
+          - name: order_status_url
+            description: Order status page URL.
+            data_type: VARCHAR
+          - name: payment_gateway_names
+            description: JSON array of payment gateways.
+            data_type: JSON
+          - name: phone
+            description: Phone (null).
+            data_type: INTEGER
+          - name: presentment_currency
+            description: Currency shown to the buyer.
+            data_type: VARCHAR
+          - name: processed_at
+            description: When processed.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: reference
+            description: External reference (null).
+            data_type: INTEGER
+          - name: referring_site
+            description: >-
+              Referrer URL of the converting visit (e.g. https://www.google.com/, https://l.instagram.com/);
+              null = direct/email app. Fallback channel when UTMs are missing.
+            data_type: VARCHAR
+          - name: refunds
+            description: JSON array of refund ids on the order. Join to order_refunds.
+            data_type: JSON
+          - name: shipping_address
+            description: JSON shipping address (city, province_code, zip...). Geo analysis.
+            data_type: JSON
+          - name: billing_address
+            description: JSON billing address.
+            data_type: JSON
+          - name: shipping_lines
+            description: JSON shipping method and price.
+            data_type: JSON
+          - name: source_identifier
+            description: Source identifier (null).
+            data_type: INTEGER
+          - name: source_name
+            description: Sales channel (web).
+            data_type: VARCHAR
+          - name: source_url
+            description: Source URL (null).
+            data_type: INTEGER
+          - name: subtotal_price
+            description: >-
+              Line items total minus discounts, before shipping and tax (string). Common 'net sales' definition
+              (before refunds).
+            data_type: VARCHAR
+          - name: tags
+            description: >-
+              Comma-separated tags (customers: VIP; orders: test, wholesale-team-order; products: type/gender/season).
+            data_type: VARCHAR
+          - name: tax_lines
+            description: JSON array of tax lines.
+            data_type: JSON
+          - name: taxes_included
+            description: Prices include tax flag.
+            data_type: BOOLEAN
+          - name: test
+            description: Test order flag. Exclude test orders.
+            data_type: BOOLEAN
+          - name: token
+            description: Order token.
+            data_type: VARCHAR
+          - name: total_discounts
+            description: Total discount amount (string).
+            data_type: VARCHAR
+          - name: total_line_items_price
+            description: Sum of line items before discounts (string). Gross sales.
+            data_type: VARCHAR
+          - name: total_outstanding
+            description: Amount still owed (string).
+            data_type: VARCHAR
+          - name: total_price
+            description: 'Total charged: subtotal + shipping + tax (string).'
+            data_type: VARCHAR
+          - name: total_shipping_price_set
+            description: JSON shipping amount {shop_money{amount}}.
+            data_type: JSON
+          - name: total_tax
+            description: Total tax (string).
+            data_type: VARCHAR
+          - name: total_tip_received
+            description: Tips (0).
+            data_type: VARCHAR
+          - name: total_weight
+            description: Total weight in grams.
+            data_type: BIGINT
+          - name: updated_at
+            description: When the record was last updated. Incremental sync cursor.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: user_id
+            description: Staff user who performed the action (null).
+            data_type: INTEGER
+          - name: deleted_at
+            description: Set by Airbyte when a record is deleted in Shopify (null).
+            data_type: INTEGER
+          - name: deleted_message
+            description: Deletion message (null).
+            data_type: INTEGER
+          - name: deleted_description
+            description: Deletion description (null).
+            data_type: INTEGER
+          - name: shop_url
+            description: >-
+              Shopify store domain this record belongs to. Constant here; useful when loading several
+              stores.
+            data_type: VARCHAR
+          - name: _airbyte_raw_id
+            description: >-
+              Unique id Airbyte assigns to each record it loads. Lineage/debugging only; not a business
+              key.
+            data_type: VARCHAR
+          - name: _airbyte_extracted_at
+            description: >-
+              UTC time Airbyte extracted this record from the source API. Use to deduplicate (keep latest
+              per business key) and for source freshness tests.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: _airbyte_meta
+            description: >-
+              JSON with sync metadata: {changes: [...type-casting issues...], sync_id}. Check `changes`
+              for fields Airbyte could not type-cast.
+            data_type: JSON
+          - name: _airbyte_generation_id
+            description: >-
+              Airbyte refresh generation counter (increments on full refresh). Rarely needed; can filter
+              to the latest generation after a refresh.
+            data_type: BIGINT
+      - name: price_rules
+        description: >-
+          Discount rules behind each discount code (percentage, scope, limits). Grain: One row per price
+          rule. Joins: id -> discount_codes.price_rule_id.
+        columns:
+          - name: id
+            description: Price rule id.
+            data_type: BIGINT
+            data_tests:
+              - not_null
+              - unique
+          - name: title
+            description: Rule title (= code).
+            data_type: VARCHAR
+          - name: value_type
+            description: percentage.
+            data_type: VARCHAR
+          - name: value
+            description: Discount value (negative percentage, string).
+            data_type: VARCHAR
+          - name: target_type
+            description: line_item.
+            data_type: VARCHAR
+          - name: target_selection
+            description: all.
+            data_type: VARCHAR
+          - name: allocation_method
+            description: across.
+            data_type: VARCHAR
+          - name: once_per_customer
+            description: Limited to one use per customer.
+            data_type: BOOLEAN
+          - name: usage_limit
+            description: Max uses (null = unlimited).
+            data_type: INTEGER
+          - name: starts_at
+            description: Rule start.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: ends_at
+            description: Rule end (null).
+            data_type: INTEGER
+          - name: created_at
+            description: When the rule was created.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: updated_at
+            description: When the record was last updated. Incremental sync cursor.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: customer_selection
+            description: Eligible customers (all).
+            data_type: VARCHAR
+          - name: shop_url
+            description: >-
+              Shopify store domain this record belongs to. Constant here; useful when loading several
+              stores.
+            data_type: VARCHAR
+          - name: _airbyte_raw_id
+            description: >-
+              Unique id Airbyte assigns to each record it loads. Lineage/debugging only; not a business
+              key.
+            data_type: VARCHAR
+          - name: _airbyte_extracted_at
+            description: >-
+              UTC time Airbyte extracted this record from the source API. Use to deduplicate (keep latest
+              per business key) and for source freshness tests.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: _airbyte_meta
+            description: >-
+              JSON with sync metadata: {changes: [...type-casting issues...], sync_id}. Check `changes`
+              for fields Airbyte could not type-cast.
+            data_type: JSON
+          - name: _airbyte_generation_id
+            description: >-
+              Airbyte refresh generation counter (increments on full refresh). Rarely needed; can filter
+              to the latest generation after a refresh.
+            data_type: BIGINT
+      - name: product_variants
+        description: >-
+          Sellable variants (color/size) with SKU, price, inventory. Grain: One row per variant. Joins:
+          product_id -> products.id; id -> orders.line_items[*].variant_id. Gotchas: Prices are strings.
+        columns:
+          - name: id
+            description: Variant id. Join to orders.line_items[*].variant_id.
+            data_type: BIGINT
+            data_tests:
+              - not_null
+              - unique
+          - name: product_id
+            description: Parent product id. Join to products.id.
+            data_type: BIGINT
+          - name: title
+            description: Variant title (Color / Size).
+            data_type: VARCHAR
+          - name: price
+            description: Variant price (string).
+            data_type: VARCHAR
+          - name: sku
+            description: Stock keeping unit.
+            data_type: VARCHAR
+          - name: position
+            description: Variant position.
+            data_type: BIGINT
+          - name: inventory_policy
+            description: deny = no overselling.
+            data_type: VARCHAR
+          - name: compare_at_price
+            description: Original price for sale display (null).
+            data_type: INTEGER
+          - name: fulfillment_service
+            description: manual.
+            data_type: VARCHAR
+          - name: inventory_management
+            description: shopify (tracked) or null.
+            data_type: VARCHAR
+          - name: option1
+            description: Color.
+            data_type: VARCHAR
+          - name: option2
+            description: Size.
+            data_type: VARCHAR
+          - name: option3
+            description: Unused.
+            data_type: INTEGER
+          - name: created_at
+            description: When the variant was created.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: updated_at
+            description: When the record was last updated. Incremental sync cursor.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: taxable
+            description: Taxable flag (gift cards are not).
+            data_type: BOOLEAN
+          - name: barcode
+            description: Barcode.
+            data_type: VARCHAR
+          - name: grams
+            description: Weight in grams.
+            data_type: BIGINT
+          - name: weight
+            description: Weight.
+            data_type: DOUBLE
+          - name: weight_unit
+            description: lb.
+            data_type: VARCHAR
+          - name: inventory_item_id
+            description: Inventory item id.
+            data_type: BIGINT
+          - name: inventory_quantity
+            description: Units on hand.
+            data_type: BIGINT
+          - name: old_inventory_quantity
+            description: Previous quantity (null).
+            data_type: INTEGER
+          - name: requires_shipping
+            description: Physical product flag.
+            data_type: BOOLEAN
+          - name: admin_graphql_api_id
+            description: Shopify GraphQL global id (gid://shopify/<Type>/<id>). Use `id` for joins.
+            data_type: VARCHAR
+          - name: shop_url
+            description: >-
+              Shopify store domain this record belongs to. Constant here; useful when loading several
+              stores.
+            data_type: VARCHAR
+          - name: _airbyte_raw_id
+            description: >-
+              Unique id Airbyte assigns to each record it loads. Lineage/debugging only; not a business
+              key.
+            data_type: VARCHAR
+          - name: _airbyte_extracted_at
+            description: >-
+              UTC time Airbyte extracted this record from the source API. Use to deduplicate (keep latest
+              per business key) and for source freshness tests.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: _airbyte_meta
+            description: >-
+              JSON with sync metadata: {changes: [...type-casting issues...], sync_id}. Check `changes`
+              for fields Airbyte could not type-cast.
+            data_type: JSON
+          - name: _airbyte_generation_id
+            description: >-
+              Airbyte refresh generation counter (increments on full refresh). Rarely needed; can filter
+              to the latest generation after a refresh.
+            data_type: BIGINT
+      - name: products
+        description: >-
+          Product catalog (30 apparel products): title, type, handle, tags, plus nested variants/options/images
+          JSON. Grain: One row per product. Joins: id -> product_variants.product_id, orders.line_items[*].product_id;
+          handle appears in /products/<handle> URLs. Gotchas: Use product_variants for variant-level detail
+          rather than the nested `variants` JSON.
+        columns:
+          - name: id
+            description: Product id. Join to product_variants.product_id.
+            data_type: BIGINT
+            data_tests:
+              - not_null
+              - unique
+          - name: title
+            description: Product title.
+            data_type: VARCHAR
+          - name: body_html
+            description: Product description HTML.
+            data_type: VARCHAR
+          - name: vendor
+            description: Brand/vendor.
+            data_type: VARCHAR
+          - name: product_type
+            description: >-
+              Category: Tops, Bottoms, Outerwear, Dresses, Activewear, Accessories, Gift Card. Product
+              category dimension.
+            data_type: VARCHAR
+          - name: created_at
+            description: When the product was created.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: handle
+            description: URL handle (/products/<handle>). Join GA4 page paths / landing pages to products.
+            data_type: VARCHAR
+          - name: updated_at
+            description: When the record was last updated. Incremental sync cursor.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: published_at
+            description: Published timestamp.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: template_suffix
+            description: Theme template (null).
+            data_type: INTEGER
+          - name: status
+            description: active.
+            data_type: VARCHAR
+          - name: published_scope
+            description: global.
+            data_type: VARCHAR
+          - name: tags
+            description: >-
+              Comma-separated tags (customers: VIP; orders: test, wholesale-team-order; products: type/gender/season).
+            data_type: VARCHAR
+          - name: admin_graphql_api_id
+            description: Shopify GraphQL global id (gid://shopify/<Type>/<id>). Use `id` for joins.
+            data_type: VARCHAR
+          - name: variants
+            description: JSON array of variants (duplicate of product_variants). Prefer product_variants
+              table.
+            data_type: JSON
+          - name: options
+            description: JSON array of options (Color, Size) and values.
+            data_type: JSON
+          - name: images
+            description: JSON array of images.
+            data_type: JSON
+          - name: image
+            description: JSON main image.
+            data_type: JSON
+          - name: shop_url
+            description: >-
+              Shopify store domain this record belongs to. Constant here; useful when loading several
+              stores.
+            data_type: VARCHAR
+          - name: _airbyte_raw_id
+            description: >-
+              Unique id Airbyte assigns to each record it loads. Lineage/debugging only; not a business
+              key.
+            data_type: VARCHAR
+          - name: _airbyte_extracted_at
+            description: >-
+              UTC time Airbyte extracted this record from the source API. Use to deduplicate (keep latest
+              per business key) and for source freshness tests.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: _airbyte_meta
+            description: >-
+              JSON with sync metadata: {changes: [...type-casting issues...], sync_id}. Check `changes`
+              for fields Airbyte could not type-cast.
+            data_type: JSON
+          - name: _airbyte_generation_id
+            description: >-
+              Airbyte refresh generation counter (increments on full refresh). Rarely needed; can filter
+              to the latest generation after a refresh.
+            data_type: BIGINT
+      - name: shop
+        description: >-
+          Store settings: name, domain, currency, timezone, plan. Grain: One row per store. Joins: shop_url
+          on every shopify table.
+        columns:
+          - name: id
+            description: Shop id.
+            data_type: BIGINT
+            data_tests:
+              - not_null
+              - unique
+          - name: name
+            description: Store name.
+            data_type: VARCHAR
+          - name: email
+            description: Store contact email.
+            data_type: VARCHAR
+          - name: domain
+            description: Storefront domain.
+            data_type: VARCHAR
+          - name: myshopify_domain
+            description: myshopify domain.
+            data_type: VARCHAR
+          - name: province
+            description: Store province.
+            data_type: VARCHAR
+          - name: country
+            description: Store country.
+            data_type: VARCHAR
+          - name: currency
+            description: Store currency.
+            data_type: VARCHAR
+          - name: iana_timezone
+            description: Store timezone (America/New_York). Use for local order dates.
+            data_type: VARCHAR
+          - name: timezone
+            description: Store timezone label.
+            data_type: VARCHAR
+          - name: plan_name
+            description: Shopify plan.
+            data_type: VARCHAR
+          - name: created_at
+            description: When the store was created.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: updated_at
+            description: When the record was last updated. Incremental sync cursor.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: shop_url
+            description: >-
+              Shopify store domain this record belongs to. Constant here; useful when loading several
+              stores.
+            data_type: VARCHAR
+          - name: _airbyte_raw_id
+            description: >-
+              Unique id Airbyte assigns to each record it loads. Lineage/debugging only; not a business
+              key.
+            data_type: VARCHAR
+          - name: _airbyte_extracted_at
+            description: >-
+              UTC time Airbyte extracted this record from the source API. Use to deduplicate (keep latest
+              per business key) and for source freshness tests.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: _airbyte_meta
+            description: >-
+              JSON with sync metadata: {changes: [...type-casting issues...], sync_id}. Check `changes`
+              for fields Airbyte could not type-cast.
+            data_type: JSON
+          - name: _airbyte_generation_id
+            description: >-
+              Airbyte refresh generation counter (increments on full refresh). Rarely needed; can filter
+              to the latest generation after a refresh.
+            data_type: BIGINT
+      - name: transactions
+        description: >-
+          Payment transactions per order: sales, refunds and voids. Grain: One row per transaction. Joins:
+          order_id -> orders.id; parent_id -> transactions.id. Gotchas: kind = sale / refund / void; amounts
+          are strings.
+        columns:
+          - name: id
+            description: Transaction id.
+            data_type: BIGINT
+            data_tests:
+              - not_null
+              - unique
+          - name: order_id
+            description: Shopify order id. Join to orders.id.
+            data_type: BIGINT
+          - name: kind
+            description: sale, refund or void.
+            data_type: VARCHAR
+          - name: gateway
+            description: Payment gateway.
+            data_type: VARCHAR
+          - name: status
+            description: success.
+            data_type: VARCHAR
+          - name: amount
+            description: Transaction amount (string).
+            data_type: VARCHAR
+          - name: currency
+            description: Currency.
+            data_type: VARCHAR
+          - name: created_at
+            description: When the payment transaction happened.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: processed_at
+            description: When processed.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: source_name
+            description: Sales channel (web).
+            data_type: VARCHAR
+          - name: test
+            description: Test transaction flag.
+            data_type: BOOLEAN
+          - name: authorization
+            description: Authorization code (null).
+            data_type: INTEGER
+          - name: parent_id
+            description: Parent transaction (the sale being refunded/voided).
+            data_type: BIGINT
+          - name: error_code
+            description: Error code (null).
+            data_type: INTEGER
+          - name: payment_details
+            description: 'JSON: card brand or wallet (no card numbers).'
+            data_type: JSON
+          - name: receipt
+            description: Gateway receipt JSON (empty).
+            data_type: JSON
+          - name: shop_url
+            description: >-
+              Shopify store domain this record belongs to. Constant here; useful when loading several
+              stores.
+            data_type: VARCHAR
+          - name: _airbyte_raw_id
+            description: >-
+              Unique id Airbyte assigns to each record it loads. Lineage/debugging only; not a business
+              key.
+            data_type: VARCHAR
+          - name: _airbyte_extracted_at
+            description: >-
+              UTC time Airbyte extracted this record from the source API. Use to deduplicate (keep latest
+              per business key) and for source freshness tests.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: _airbyte_meta
+            description: >-
+              JSON with sync metadata: {changes: [...type-casting issues...], sync_id}. Check `changes`
+              for fields Airbyte could not type-cast.
+            data_type: JSON
+          - name: _airbyte_generation_id
+            description: >-
+              Airbyte refresh generation counter (increments on full refresh). Rarely needed; can filter
+              to the latest generation after a refresh.
+            data_type: BIGINT

@@ -1,0 +1,578 @@
+version: 2
+sources:
+  - name: google_ads
+    database: mkt_raw
+    schema: google_ads
+    description: 'Raw google_ads data. Source system: Google Ads API via Airbyte source-google-ads.'
+    tables:
+      - name: ad_group
+        description: >-
+          Daily ad group performance for Search, YouTube and Demand Gen campaigns, with ad group settings.
+          Grain: One row per ad group per day. Joins: ad_group_id -> ad_group_ad, keyword_view; campaign_id
+          -> campaign. Gotchas: Performance Max has no ad groups, so ad_group spend < campaign spend.
+          GAQL field names with '.' replaced by '_' (e.g. metrics.cost_micros -> metrics_cost_micros);
+          some destinations keep the dotted names.
+        columns:
+          - name: campaign_id
+            description: Google Ads campaign id (campaign.id). Equals utm_id on Google landing URLs.
+            data_type: BIGINT
+          - name: ad_group_id
+            description: Ad group id. Join key.
+            data_type: BIGINT
+            data_tests:
+              - not_null
+          - name: segments_date
+            description: Reporting date (account timezone). Daily grain date.
+            data_type: DATE
+            data_tests:
+              - not_null
+          - name: metrics_impressions
+            description: Impressions. Additive.
+            data_type: BIGINT
+          - name: metrics_clicks
+            description: Clicks. Additive; Google clicks are close to sessions.
+            data_type: BIGINT
+          - name: metrics_conversions
+            description: >-
+              Platform conversions (purchases), FRACTIONAL due to data-driven attribution. Platform-claimed;
+              brand search & PMax over-claim.
+            data_type: DOUBLE
+          - name: metrics_conversions_value
+            description: Conversion value (revenue) claimed by Google Ads. Platform ROAS numerator.
+            data_type: DOUBLE
+          - name: metrics_view_through_conversions
+            description: Conversions after an impression without a click (video/PMax).
+            data_type: BIGINT
+          - name: metrics_video_views
+            description: Video views (YouTube/Demand Gen).
+            data_type: BIGINT
+          - name: metrics_cost_micros
+            description: Cost in MICROS (1,000,000 micros = 1 USD). Divide by 1e6 for spend.
+            data_type: BIGINT
+          - name: metrics_all_conversions
+            description: All conversions incl. cross-device/other actions.
+            data_type: DOUBLE
+          - name: metrics_interactions
+            description: Clicks + video views.
+            data_type: BIGINT
+          - name: metrics_ctr
+            description: clicks / impressions. Recompute after aggregating.
+            data_type: DOUBLE
+          - name: metrics_average_cpc
+            description: Average CPC in micros. Recompute after aggregating.
+            data_type: DOUBLE
+          - name: ad_group_name
+            description: Ad group name (e.g. W - Merino Tops, Brand - Core).
+            data_type: VARCHAR
+          - name: ad_group_status
+            description: ENABLED / PAUSED.
+            data_type: VARCHAR
+          - name: ad_group_type
+            description: SEARCH_STANDARD, VIDEO_RESPONSIVE, DEMAND_GEN_MULTI_FORMAT.
+            data_type: VARCHAR
+          - name: ad_group_cpc_bid_micros
+            description: Default max CPC bid in micros.
+            data_type: DOUBLE
+          - name: customer_id
+            description: Google Ads account id (customer.id). Join to customer.
+            data_type: BIGINT
+          - name: _airbyte_raw_id
+            description: >-
+              Unique id Airbyte assigns to each record it loads. Lineage/debugging only; not a business
+              key.
+            data_type: VARCHAR
+          - name: _airbyte_extracted_at
+            description: >-
+              UTC time Airbyte extracted this record from the source API. Use to deduplicate (keep latest
+              per business key) and for source freshness tests.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: _airbyte_meta
+            description: >-
+              JSON with sync metadata: {changes: [...type-casting issues...], sync_id}. Check `changes`
+              for fields Airbyte could not type-cast.
+            data_type: JSON
+          - name: _airbyte_generation_id
+            description: >-
+              Airbyte refresh generation counter (increments on full refresh). Rarely needed; can filter
+              to the latest generation after a refresh.
+            data_type: BIGINT
+      - name: ad_group_ad
+        description: >-
+          Ads (responsive search ads and video ads) with their settings and final URLs. Grain: One row
+          per ad. Joins: ad_group_ad_ad_id -> ad_group_ad_legacy; ad_group_id -> ad_group. Gotchas: GAQL
+          field names with '.' replaced by '_' (e.g. metrics.cost_micros -> metrics_cost_micros); some
+          destinations keep the dotted names.
+        columns:
+          - name: ad_group_id
+            description: Ad group id. Join key.
+            data_type: BIGINT
+          - name: campaign_id
+            description: Google Ads campaign id (campaign.id). Equals utm_id on Google landing URLs.
+            data_type: BIGINT
+          - name: ad_group_ad_ad_id
+            description: Ad id. Equals utm_content on Search/YouTube clicks.
+            data_type: BIGINT
+            data_tests:
+              - not_null
+              - unique
+          - name: ad_group_ad_ad_type
+            description: RESPONSIVE_SEARCH_AD, VIDEO_RESPONSIVE_AD, DEMAND_GEN_VIDEO_RESPONSIVE_AD.
+            data_type: VARCHAR
+          - name: ad_group_ad_status
+            description: ENABLED / PAUSED.
+            data_type: VARCHAR
+          - name: ad_group_ad_ad_name
+            description: Ad name (video ads); null for responsive search ads.
+            data_type: VARCHAR
+          - name: ad_group_ad_ad_final_urls
+            description: JSON array of landing page URLs.
+            data_type: JSON
+          - name: ad_group_ad_ad_responsive_search_ad_headlines
+            description: JSON array of RSA headlines ({text}). Copy analysis.
+            data_type: JSON
+          - name: ad_group_ad_policy_summary_approval_status
+            description: Policy approval status.
+            data_type: VARCHAR
+          - name: customer_id
+            description: Google Ads account id (customer.id). Join to customer.
+            data_type: BIGINT
+          - name: _airbyte_raw_id
+            description: >-
+              Unique id Airbyte assigns to each record it loads. Lineage/debugging only; not a business
+              key.
+            data_type: VARCHAR
+          - name: _airbyte_extracted_at
+            description: >-
+              UTC time Airbyte extracted this record from the source API. Use to deduplicate (keep latest
+              per business key) and for source freshness tests.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: _airbyte_meta
+            description: >-
+              JSON with sync metadata: {changes: [...type-casting issues...], sync_id}. Check `changes`
+              for fields Airbyte could not type-cast.
+            data_type: JSON
+          - name: _airbyte_generation_id
+            description: >-
+              Airbyte refresh generation counter (increments on full refresh). Rarely needed; can filter
+              to the latest generation after a refresh.
+            data_type: BIGINT
+      - name: ad_group_ad_legacy
+        description: >-
+          Daily ad-level performance for Search and video ads, with ad attributes. Grain: One row per
+          ad per day. Joins: ad_group_ad_ad_id -> ad_group_ad; ad_group_id -> ad_group; campaign_id ->
+          campaign. Gotchas: Excludes Performance Max. GAQL field names with '.' replaced by '_' (e.g.
+          metrics.cost_micros -> metrics_cost_micros); some destinations keep the dotted names.
+        columns:
+          - name: campaign_id
+            description: Google Ads campaign id (campaign.id). Equals utm_id on Google landing URLs.
+            data_type: BIGINT
+          - name: ad_group_id
+            description: Ad group id. Join key.
+            data_type: BIGINT
+          - name: segments_date
+            description: Reporting date (account timezone). Daily grain date.
+            data_type: DATE
+            data_tests:
+              - not_null
+          - name: ad_group_ad_ad_id
+            description: Ad id. Equals utm_content on Search/YouTube clicks.
+            data_type: BIGINT
+            data_tests:
+              - not_null
+          - name: metrics_impressions
+            description: Impressions. Additive.
+            data_type: BIGINT
+          - name: metrics_clicks
+            description: Clicks. Additive; Google clicks are close to sessions.
+            data_type: BIGINT
+          - name: metrics_conversions
+            description: >-
+              Platform conversions (purchases), FRACTIONAL due to data-driven attribution. Platform-claimed;
+              brand search & PMax over-claim.
+            data_type: DOUBLE
+          - name: metrics_conversions_value
+            description: Conversion value (revenue) claimed by Google Ads. Platform ROAS numerator.
+            data_type: DOUBLE
+          - name: metrics_view_through_conversions
+            description: Conversions after an impression without a click (video/PMax).
+            data_type: BIGINT
+          - name: metrics_video_views
+            description: Video views (YouTube/Demand Gen).
+            data_type: BIGINT
+          - name: metrics_cost_micros
+            description: Cost in MICROS (1,000,000 micros = 1 USD). Divide by 1e6 for spend.
+            data_type: BIGINT
+          - name: metrics_all_conversions
+            description: All conversions incl. cross-device/other actions.
+            data_type: DOUBLE
+          - name: metrics_interactions
+            description: Clicks + video views.
+            data_type: BIGINT
+          - name: metrics_ctr
+            description: clicks / impressions. Recompute after aggregating.
+            data_type: DOUBLE
+          - name: metrics_average_cpc
+            description: Average CPC in micros. Recompute after aggregating.
+            data_type: DOUBLE
+          - name: ad_group_ad_ad_type
+            description: RESPONSIVE_SEARCH_AD, VIDEO_RESPONSIVE_AD, DEMAND_GEN_VIDEO_RESPONSIVE_AD.
+            data_type: VARCHAR
+          - name: ad_group_ad_status
+            description: ENABLED / PAUSED.
+            data_type: VARCHAR
+          - name: ad_group_ad_ad_name
+            description: Ad name (video ads); null for responsive search ads.
+            data_type: VARCHAR
+          - name: ad_group_ad_ad_final_urls
+            description: JSON array of landing page URLs.
+            data_type: JSON
+          - name: ad_group_ad_ad_responsive_search_ad_headlines
+            description: JSON array of RSA headlines ({text}). Copy analysis.
+            data_type: JSON
+          - name: ad_group_ad_policy_summary_approval_status
+            description: Policy approval status.
+            data_type: VARCHAR
+          - name: customer_id
+            description: Google Ads account id (customer.id). Join to customer.
+            data_type: BIGINT
+          - name: _airbyte_raw_id
+            description: >-
+              Unique id Airbyte assigns to each record it loads. Lineage/debugging only; not a business
+              key.
+            data_type: VARCHAR
+          - name: _airbyte_extracted_at
+            description: >-
+              UTC time Airbyte extracted this record from the source API. Use to deduplicate (keep latest
+              per business key) and for source freshness tests.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: _airbyte_meta
+            description: >-
+              JSON with sync metadata: {changes: [...type-casting issues...], sync_id}. Check `changes`
+              for fields Airbyte could not type-cast.
+            data_type: JSON
+          - name: _airbyte_generation_id
+            description: >-
+              Airbyte refresh generation counter (increments on full refresh). Rarely needed; can filter
+              to the latest generation after a refresh.
+            data_type: BIGINT
+      - name: campaign
+        description: >-
+          Daily Google Ads campaign performance segmented by network and device, plus campaign settings.
+          Covers Search (brand + non-brand), Performance Max, YouTube (Video) and Demand Gen. Grain: One
+          row per campaign per day per segments_ad_network_type per segments_device. Joins: campaign_id
+          -> ad_group.campaign_id, keyword_view.campaign_id; campaign_budget_id -> campaign_budget; campaign_id
+          equals `utm_id` in landing URLs. Gotchas: Cost is in micros (divide by 1,000,000). Conversions
+          are fractional (data-driven attribution). Sum across network/device rows for campaign-day totals.
+          GAQL field names with '.' replaced by '_' (e.g. metrics.cost_micros -> metrics_cost_micros);
+          some destinations keep the dotted names.
+        columns:
+          - name: campaign_id
+            description: Google Ads campaign id (campaign.id). Equals utm_id on Google landing URLs.
+            data_type: BIGINT
+            data_tests:
+              - not_null
+          - name: segments_date
+            description: Reporting date (account timezone). Daily grain date.
+            data_type: DATE
+            data_tests:
+              - not_null
+          - name: segments_ad_network_type
+            description: >-
+              Network: SEARCH, SEARCH_PARTNERS, MIXED (Performance Max), YOUTUBE, CONTENT, DISCOVER, GMAIL.
+              Sum across for campaign totals.
+            data_type: VARCHAR
+            data_tests:
+              - not_null
+          - name: segments_device
+            description: 'Device: MOBILE, DESKTOP, TABLET, CONNECTED_TV.'
+            data_type: VARCHAR
+            data_tests:
+              - not_null
+          - name: metrics_impressions
+            description: Impressions. Additive.
+            data_type: BIGINT
+          - name: metrics_clicks
+            description: Clicks. Additive; Google clicks are close to sessions.
+            data_type: BIGINT
+          - name: metrics_conversions
+            description: >-
+              Platform conversions (purchases), FRACTIONAL due to data-driven attribution. Platform-claimed;
+              brand search & PMax over-claim.
+            data_type: DOUBLE
+          - name: metrics_conversions_value
+            description: Conversion value (revenue) claimed by Google Ads. Platform ROAS numerator.
+            data_type: DOUBLE
+          - name: metrics_view_through_conversions
+            description: Conversions after an impression without a click (video/PMax).
+            data_type: BIGINT
+          - name: metrics_video_views
+            description: Video views (YouTube/Demand Gen).
+            data_type: BIGINT
+          - name: campaign_name
+            description: >-
+              Campaign name: Search | Brand..., Search | NonBrand..., PMax | ..., YouTube | ... Channel
+              mapping: Brand vs Non-brand search, PMax, YouTube.
+            data_type: VARCHAR
+          - name: campaign_status
+            description: ENABLED / PAUSED.
+            data_type: VARCHAR
+          - name: campaign_advertising_channel_type
+            description: SEARCH, PERFORMANCE_MAX, VIDEO, DEMAND_GEN. Primary channel classifier.
+            data_type: VARCHAR
+          - name: campaign_advertising_channel_sub_type
+            description: Sub type (VIDEO_ACTION) or null.
+            data_type: VARCHAR
+          - name: campaign_bidding_strategy_type
+            description: Bidding strategy (TARGET_IMPRESSION_SHARE, MAXIMIZE_CONVERSION_VALUE, TARGET_CPM...).
+            data_type: VARCHAR
+          - name: campaign_start_date
+            description: Campaign start date (YYYY-MM-DD string).
+            data_type: VARCHAR
+          - name: campaign_end_date
+            description: Campaign end date; 2037-12-30 means no end date.
+            data_type: VARCHAR
+          - name: campaign_budget_id
+            description: Budget id used by the campaign. Join to campaign_budget.
+            data_type: BIGINT
+          - name: campaign_serving_status
+            description: SERVING / ENDED.
+            data_type: VARCHAR
+          - name: campaign_final_url_suffix
+            description: >-
+              UTM template appended to landing URLs ({_campaign}, {keyword}, {creative}, {campaignid}
+              ValueTrack params). Explains Google UTMs: utm_campaign = slug of campaign name.
+            data_type: VARCHAR
+          - name: customer_id
+            description: Google Ads account id (customer.id). Join to customer.
+            data_type: BIGINT
+          - name: metrics_cost_micros
+            description: Cost in MICROS (1,000,000 micros = 1 USD). Divide by 1e6 for spend.
+            data_type: BIGINT
+          - name: metrics_all_conversions
+            description: All conversions incl. cross-device/other actions.
+            data_type: DOUBLE
+          - name: metrics_interactions
+            description: Clicks + video views.
+            data_type: BIGINT
+          - name: metrics_ctr
+            description: clicks / impressions. Recompute after aggregating.
+            data_type: DOUBLE
+          - name: metrics_average_cpc
+            description: Average CPC in micros. Recompute after aggregating.
+            data_type: DOUBLE
+          - name: _airbyte_raw_id
+            description: >-
+              Unique id Airbyte assigns to each record it loads. Lineage/debugging only; not a business
+              key.
+            data_type: VARCHAR
+          - name: _airbyte_extracted_at
+            description: >-
+              UTC time Airbyte extracted this record from the source API. Use to deduplicate (keep latest
+              per business key) and for source freshness tests.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: _airbyte_meta
+            description: >-
+              JSON with sync metadata: {changes: [...type-casting issues...], sync_id}. Check `changes`
+              for fields Airbyte could not type-cast.
+            data_type: JSON
+          - name: _airbyte_generation_id
+            description: >-
+              Airbyte refresh generation counter (increments on full refresh). Rarely needed; can filter
+              to the latest generation after a refresh.
+            data_type: BIGINT
+      - name: campaign_budget
+        description: >-
+          Daily budget settings for each Google Ads campaign. Grain: One row per budget. Joins: campaign_budget_id
+          -> campaign.campaign_budget_id. Gotchas: Amounts in micros.
+        columns:
+          - name: campaign_budget_id
+            description: Budget id used by the campaign. Join to campaign_budget.
+            data_type: BIGINT
+            data_tests:
+              - not_null
+              - unique
+          - name: campaign_budget_name
+            description: Budget name.
+            data_type: VARCHAR
+          - name: campaign_budget_amount_micros
+            description: Daily budget amount in micros. Divide by 1e6.
+            data_type: BIGINT
+          - name: campaign_budget_delivery_method
+            description: STANDARD pacing.
+            data_type: VARCHAR
+          - name: campaign_budget_explicitly_shared
+            description: Whether the budget is shared across campaigns.
+            data_type: BOOLEAN
+          - name: campaign_budget_status
+            description: Budget status.
+            data_type: VARCHAR
+          - name: customer_id
+            description: Google Ads account id (customer.id). Join to customer.
+            data_type: BIGINT
+          - name: _airbyte_raw_id
+            description: >-
+              Unique id Airbyte assigns to each record it loads. Lineage/debugging only; not a business
+              key.
+            data_type: VARCHAR
+          - name: _airbyte_extracted_at
+            description: >-
+              UTC time Airbyte extracted this record from the source API. Use to deduplicate (keep latest
+              per business key) and for source freshness tests.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: _airbyte_meta
+            description: >-
+              JSON with sync metadata: {changes: [...type-casting issues...], sync_id}. Check `changes`
+              for fields Airbyte could not type-cast.
+            data_type: JSON
+          - name: _airbyte_generation_id
+            description: >-
+              Airbyte refresh generation counter (increments on full refresh). Rarely needed; can filter
+              to the latest generation after a refresh.
+            data_type: BIGINT
+      - name: customer
+        description: >-
+          The Google Ads account (customer): name, currency, timezone, auto-tagging setting. Grain: One
+          row per Google Ads account. Joins: customer_id -> all google_ads tables. Gotchas: Auto-tagging
+          is on, so Google clicks carry gclid (or gbraid on iOS).
+        columns:
+          - name: customer_id
+            description: Google Ads account id (customer.id). Join to customer.
+            data_type: BIGINT
+            data_tests:
+              - not_null
+              - unique
+          - name: customer_descriptive_name
+            description: Account name.
+            data_type: VARCHAR
+          - name: customer_currency_code
+            description: Account currency.
+            data_type: VARCHAR
+          - name: customer_time_zone
+            description: Account timezone.
+            data_type: VARCHAR
+          - name: customer_auto_tagging_enabled
+            description: Whether gclid auto-tagging is on.
+            data_type: BOOLEAN
+          - name: customer_manager
+            description: Manager (MCC) account flag.
+            data_type: BOOLEAN
+          - name: customer_test_account
+            description: Test account flag.
+            data_type: BOOLEAN
+          - name: customer_resource_name
+            description: API resource name (customers/<id>).
+            data_type: VARCHAR
+          - name: _airbyte_raw_id
+            description: >-
+              Unique id Airbyte assigns to each record it loads. Lineage/debugging only; not a business
+              key.
+            data_type: VARCHAR
+          - name: _airbyte_extracted_at
+            description: >-
+              UTC time Airbyte extracted this record from the source API. Use to deduplicate (keep latest
+              per business key) and for source freshness tests.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: _airbyte_meta
+            description: >-
+              JSON with sync metadata: {changes: [...type-casting issues...], sync_id}. Check `changes`
+              for fields Airbyte could not type-cast.
+            data_type: JSON
+          - name: _airbyte_generation_id
+            description: >-
+              Airbyte refresh generation counter (increments on full refresh). Rarely needed; can filter
+              to the latest generation after a refresh.
+            data_type: BIGINT
+      - name: keyword_view
+        description: >-
+          Daily keyword performance for Search campaigns: keyword text, match type, quality score. Grain:
+          One row per keyword (ad group criterion) per day. Joins: ad_group_id -> ad_group; campaign_id
+          -> campaign; keyword text equals `utm_term` on search clicks. Gotchas: Search campaigns only;
+          sums to Search campaign spend. GAQL field names with '.' replaced by '_' (e.g. metrics.cost_micros
+          -> metrics_cost_micros); some destinations keep the dotted names.
+        columns:
+          - name: campaign_id
+            description: Google Ads campaign id (campaign.id). Equals utm_id on Google landing URLs.
+            data_type: BIGINT
+          - name: ad_group_id
+            description: Ad group id. Join key.
+            data_type: BIGINT
+          - name: ad_group_criterion_criterion_id
+            description: Keyword (criterion) id. Keyword grain key.
+            data_type: BIGINT
+            data_tests:
+              - not_null
+          - name: segments_date
+            description: Reporting date (account timezone). Daily grain date.
+            data_type: DATE
+            data_tests:
+              - not_null
+          - name: metrics_impressions
+            description: Impressions. Additive.
+            data_type: BIGINT
+          - name: metrics_clicks
+            description: Clicks. Additive; Google clicks are close to sessions.
+            data_type: BIGINT
+          - name: metrics_conversions
+            description: >-
+              Platform conversions (purchases), FRACTIONAL due to data-driven attribution. Platform-claimed;
+              brand search & PMax over-claim.
+            data_type: DOUBLE
+          - name: metrics_conversions_value
+            description: Conversion value (revenue) claimed by Google Ads. Platform ROAS numerator.
+            data_type: DOUBLE
+          - name: metrics_view_through_conversions
+            description: Conversions after an impression without a click (video/PMax).
+            data_type: BIGINT
+          - name: metrics_video_views
+            description: Video views (YouTube/Demand Gen).
+            data_type: BIGINT
+          - name: metrics_cost_micros
+            description: Cost in MICROS (1,000,000 micros = 1 USD). Divide by 1e6 for spend.
+            data_type: BIGINT
+          - name: metrics_all_conversions
+            description: All conversions incl. cross-device/other actions.
+            data_type: DOUBLE
+          - name: metrics_interactions
+            description: Clicks + video views.
+            data_type: BIGINT
+          - name: metrics_ctr
+            description: clicks / impressions. Recompute after aggregating.
+            data_type: DOUBLE
+          - name: metrics_average_cpc
+            description: Average CPC in micros. Recompute after aggregating.
+            data_type: DOUBLE
+          - name: ad_group_criterion_keyword_text
+            description: Keyword text. Equals utm_term on search clicks; brand keywords contain 'halden'.
+            data_type: VARCHAR
+          - name: ad_group_criterion_keyword_match_type
+            description: EXACT, PHRASE or BROAD.
+            data_type: VARCHAR
+          - name: ad_group_criterion_status
+            description: Keyword status.
+            data_type: VARCHAR
+          - name: ad_group_criterion_quality_info_quality_score
+            description: Quality score 1-10.
+            data_type: BIGINT
+          - name: customer_id
+            description: Google Ads account id (customer.id). Join to customer.
+            data_type: BIGINT
+          - name: _airbyte_raw_id
+            description: >-
+              Unique id Airbyte assigns to each record it loads. Lineage/debugging only; not a business
+              key.
+            data_type: VARCHAR
+          - name: _airbyte_extracted_at
+            description: >-
+              UTC time Airbyte extracted this record from the source API. Use to deduplicate (keep latest
+              per business key) and for source freshness tests.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: _airbyte_meta
+            description: >-
+              JSON with sync metadata: {changes: [...type-casting issues...], sync_id}. Check `changes`
+              for fields Airbyte could not type-cast.
+            data_type: JSON
+          - name: _airbyte_generation_id
+            description: >-
+              Airbyte refresh generation counter (increments on full refresh). Rarely needed; can filter
+              to the latest generation after a refresh.
+            data_type: BIGINT

@@ -1,0 +1,8 @@
+version: 2
+
+models:
+  - name: stg_facebook_marketing__campaigns
+    columns:
+      - name: campaign_id
+        data_tests:
+          - not_null

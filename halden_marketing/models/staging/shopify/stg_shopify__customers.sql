@@ -1,0 +1,23 @@
+select
+    id as customer_id,
+    email,
+    first_name,
+    last_name,
+    nullif(trim(concat_ws(' ', first_name, last_name)), '') as full_name,
+    accepts_marketing,
+    accepts_marketing_updated_at,
+    marketing_opt_in_level,
+    verified_email,
+    tax_exempt,
+    state as customer_state,
+    tags,
+    currency,
+    orders_count,
+    cast(total_spent as decimal(12, 2)) as total_spent,
+    last_order_id,
+    last_order_name,
+    created_at,
+    updated_at,
+    shop_url,
+    _airbyte_extracted_at
+from {{ source('shopify', 'customers') }}

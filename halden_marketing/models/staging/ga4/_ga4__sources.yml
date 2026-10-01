@@ -1,0 +1,169 @@
+version: 2
+sources:
+  - name: ga4
+    database: mkt_raw
+    schema: ga4
+    description: 'Raw ga4 data. Source system: Google Analytics 4 BigQuery export schema.'
+    tables:
+      - name: events
+        description: >-
+          Website clickstream: one row per event (session_start, first_visit, page_view, view_item, add_to_cart,
+          begin_checkout, purchase) for 2025-10-01 to 2026-09-30, with nested params, device, geo and
+          traffic source structs. Grain: One row per event. Joins: ecommerce.transaction_id -> shopify.orders.id
+          (as text); user_id -> shopify.customers.id (some purchases); UTMs/campaign ids -> ad platform
+          campaign ids. Gotchas: Session key = user_pseudo_id + ga_session_id (from event_params). Only
+          consenting users are tracked (~2/3 of orders appear). Trimmed export: no user_engagement events.
+          Covers 12 months only (ad/Shopify data covers 24).
+        columns:
+          - name: event_date
+            description: >-
+              Event date as 'YYYYMMDD' string in property timezone (America/New_York). strptime(event_date,
+              '%Y%m%d')::DATE.
+            data_type: VARCHAR
+          - name: event_timestamp
+            description: >-
+              Event time in microseconds since epoch (UTC). make_timestamp(event_timestamp); order events
+              within sessions.
+            data_type: BIGINT
+            data_tests:
+              - not_null
+          - name: event_name
+            description: >-
+              session_start, first_visit, page_view, view_item, add_to_cart, begin_checkout, purchase.
+              Funnel steps.
+            data_type: VARCHAR
+            data_tests:
+              - not_null
+          - name: event_params
+            description: >-
+              LIST of STRUCT(key, value STRUCT(string_value, int_value, float_value, double_value)). Keys:
+              ga_session_id, ga_session_number, page_location, page_title, page_referrer, source, medium,
+              campaign, term, content, campaign_id, gclid (landing events), currency, value, transaction_id,
+              tax, shipping. Extract with (list_filter(event_params, p -> p.key = 'ga_session_id'))[1].value.int_value.
+              Session key = user_pseudo_id + ga_session_id.
+            data_type: >-
+              STRUCT("key" VARCHAR, "value" STRUCT(string_value VARCHAR, int_value BIGINT, float_value
+              DOUBLE, double_value DOUBLE))[]
+          - name: event_previous_timestamp
+            description: Previous event time (null in this export).
+            data_type: BIGINT
+          - name: event_value_in_usd
+            description: Purchase revenue on purchase events.
+            data_type: DOUBLE
+          - name: event_bundle_sequence_id
+            description: Batch id of the network request.
+            data_type: BIGINT
+          - name: event_server_timestamp_offset
+            description: Client/server time offset (null).
+            data_type: BIGINT
+          - name: user_id
+            description: >-
+              Logged-in user id = Shopify customer id (only on ~30% of purchases). Optional customer stitching.
+            data_type: VARCHAR
+          - name: user_pseudo_id
+            description: Anonymous browser/device id (GA cookie). User key for paths; one per device.
+            data_type: VARCHAR
+            data_tests:
+              - not_null
+          - name: privacy_info
+            description: 'STRUCT(analytics_storage, ads_storage, uses_transient_token): consent state.'
+            data_type: STRUCT(analytics_storage VARCHAR, ads_storage VARCHAR, uses_transient_token VARCHAR)
+          - name: user_properties
+            description: LIST of user property structs (empty).
+            data_type: >-
+              STRUCT("key" VARCHAR, "value" STRUCT(string_value VARCHAR, int_value BIGINT, float_value
+              DOUBLE, double_value DOUBLE, set_timestamp_micros BIGINT))[]
+          - name: user_first_touch_timestamp
+            description: >-
+              Microseconds of the user's first visit (can be before the export window). New vs returning
+              visitor.
+            data_type: BIGINT
+          - name: user_ltv
+            description: STRUCT(revenue, currency) — null in this export.
+            data_type: STRUCT(revenue DOUBLE, currency VARCHAR)
+          - name: device
+            description: >-
+              STRUCT(category, mobile_brand_name, mobile_model_name, operating_system, operating_system_version,
+              language, web_info STRUCT(browser, browser_version, hostname), ...). Device/browser analysis;
+              iOS Safari has lower tracking.
+            data_type: >-
+              STRUCT(category VARCHAR, mobile_brand_name VARCHAR, mobile_model_name VARCHAR, mobile_marketing_name
+              VARCHAR, mobile_os_hardware_model VARCHAR, operating_system VARCHAR, operating_system_version
+              VA...
+          - name: geo
+            description: STRUCT(city, country, continent, region, sub_continent, metro). Geo analysis.
+            data_type: >-
+              STRUCT(city VARCHAR, country VARCHAR, continent VARCHAR, region VARCHAR, sub_continent VARCHAR,
+              metro VARCHAR)
+          - name: app_info
+            description: App info (null for web).
+            data_type: >-
+              STRUCT(id VARCHAR, "version" VARCHAR, install_store VARCHAR, firebase_app_id VARCHAR, install_source
+              VARCHAR)
+          - name: traffic_source
+            description: >-
+              STRUCT(name, medium, source): the user's FIRST-EVER acquisition source (not the session's).
+              User acquisition reporting, not session attribution.
+            data_type: STRUCT("name" VARCHAR, medium VARCHAR, "source" VARCHAR)
+          - name: stream_id
+            description: GA4 web data stream id.
+            data_type: VARCHAR
+          - name: platform
+            description: WEB.
+            data_type: VARCHAR
+          - name: event_dimensions
+            description: Event dimensions (null).
+            data_type: STRUCT(hostname VARCHAR)
+          - name: ecommerce
+            description: >-
+              STRUCT(total_item_quantity, purchase_revenue, purchase_revenue_in_usd, shipping_value, tax_value,
+              unique_items, transaction_id, refund_value...). Populated on purchase events. ecommerce.transaction_id
+              = Shopify orders.id (text).
+            data_type: >-
+              STRUCT(total_item_quantity BIGINT, purchase_revenue_in_usd DOUBLE, purchase_revenue DOUBLE,
+              refund_value_in_usd DOUBLE, refund_value DOUBLE, shipping_value_in_usd DOUBLE, shipping_value
+              DOUBLE, tax...
+          - name: items
+            description: >-
+              LIST of STRUCT(item_id, item_name, item_brand, item_variant, item_category, price, quantity,
+              item_revenue, ...). item_id = shopify_US_<product_id>_<variant_id>. Product funnel analysis.
+            data_type: >-
+              STRUCT(item_id VARCHAR, item_name VARCHAR, item_brand VARCHAR, item_variant VARCHAR, item_category
+              VARCHAR, price_in_usd DOUBLE, price DOUBLE, quantity BIGINT, item_revenue_in_usd DOUBLE,
+              item_reve...
+          - name: collected_traffic_source
+            description: >-
+              STRUCT(manual_campaign_id, manual_campaign_name, manual_source, manual_medium, manual_term,
+              manual_content, gclid, dclid, srsltid, ...): UTMs/click ids captured on the session's landing
+              events (null on other events). Session source for touchpoints; take it from the session_start
+              / first page_view.
+            data_type: >-
+              STRUCT(manual_campaign_id VARCHAR, manual_campaign_name VARCHAR, manual_source VARCHAR,
+              manual_medium VARCHAR, manual_term VARCHAR, manual_content VARCHAR, manual_source_platform
+              VARCHAR, manual_cr...
+          - name: is_active_user
+            description: Whether the event counts toward active users.
+            data_type: BOOLEAN
+          - name: batch_event_index
+            description: Order of the event within its batch.
+            data_type: BIGINT
+          - name: batch_page_id
+            description: Batch/page id.
+            data_type: BIGINT
+          - name: batch_ordering_id
+            description: Ordering of batches within the session.
+            data_type: BIGINT
+          - name: session_traffic_source_last_click
+            description: >-
+              STRUCT(manual_campaign STRUCT(...), google_ads_campaign STRUCT(customer_id, campaign_id,
+              campaign_name, ad_group_id, ad_group_name), cross_channel_campaign STRUCT(source, medium,
+              campaign_name, default_channel_group, ...)): GA4's last NON-DIRECT click attribution for
+              the session. Ready-made last non-direct click channel; compare with your own MTA.
+            data_type: >-
+              STRUCT(manual_campaign STRUCT(campaign_id VARCHAR, campaign_name VARCHAR, "source" VARCHAR,
+              medium VARCHAR, term VARCHAR, "content" VARCHAR, source_platform VARCHAR, creative_format
+              VARCHAR, market...
+          - name: publisher
+            description: Ad revenue info (null for this site).
+            data_type: >-
+              STRUCT(ad_revenue_in_usd DOUBLE, ad_format VARCHAR, ad_source_name VARCHAR, ad_unit_id VARCHAR)

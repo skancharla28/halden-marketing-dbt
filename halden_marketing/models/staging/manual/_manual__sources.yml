@@ -1,0 +1,76 @@
+version: 2
+sources:
+  - name: manual
+    database: mkt_raw
+    schema: manual
+    description: >-
+      Raw manual data. Source system: Manually maintained marketing team sheet (e.g. Google Sheets via
+      Airbyte).
+    tables:
+      - name: marketing_calendar
+        description: >-
+          Promotions (with discount % and code), notable events (site outage, shipping cutoffs, viral
+          organic post), channel flights and media tests/pauses. Grain: One row per calendar entry (date
+          range). Joins: Date ranges -> any daily table; discount_code -> shopify.discount_codes.code.
+          Gotchas: Entries are ranges; expand to one row per day for joining.
+        columns:
+          - name: entry_type
+            description: >-
+              promotion, event, media_change (pause/budget test) or media_flight. Build promo/holiday/test
+              flags for MMM.
+            data_type: VARCHAR
+          - name: name
+            description: >-
+              Entry name, e.g. 'BFCM 2025', 'Site outage', 'Meta retargeting fully paused (holdout test)'.
+            data_type: VARCHAR
+            data_tests:
+              - not_null
+          - name: start_date
+            description: First day of the entry (inclusive).
+            data_type: DATE
+            data_tests:
+              - not_null
+          - name: end_date
+            description: Last day of the entry (inclusive).
+            data_type: DATE
+          - name: discount_pct
+            description: Sitewide discount percent during a promotion. MMM control (price/promo depth).
+            data_type: DOUBLE
+          - name: discount_code
+            description: >-
+              Code used in the promotion (null for automatic discounts). Join to shopify.discount_codes.code.
+            data_type: VARCHAR
+          - name: channels
+            description: >-
+              'all' or the affected channel (tiktok, meta_retargeting, google_search_nonbrand, youtube,
+              linkedin...). Identify natural experiments per channel.
+            data_type: VARCHAR
+          - name: notes
+            description: Free-text notes.
+            data_type: VARCHAR
+          - name: owner
+            description: Team that maintains the entry.
+            data_type: VARCHAR
+          - name: last_edited
+            description: When the sheet row was last edited.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: _airbyte_raw_id
+            description: >-
+              Unique id Airbyte assigns to each record it loads. Lineage/debugging only; not a business
+              key.
+            data_type: VARCHAR
+          - name: _airbyte_extracted_at
+            description: >-
+              UTC time Airbyte extracted this record from the source API. Use to deduplicate (keep latest
+              per business key) and for source freshness tests.
+            data_type: TIMESTAMP WITH TIME ZONE
+          - name: _airbyte_meta
+            description: >-
+              JSON with sync metadata: {changes: [...type-casting issues...], sync_id}. Check `changes`
+              for fields Airbyte could not type-cast.
+            data_type: JSON
+          - name: _airbyte_generation_id
+            description: >-
+              Airbyte refresh generation counter (increments on full refresh). Rarely needed; can filter
+              to the latest generation after a refresh.
+            data_type: BIGINT
