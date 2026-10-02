@@ -40,3 +40,7 @@ models:
 seeds:
   halden_marketing:
     +schema: seeds
+
+snapshots:
+  halden_marketing:
+    +schema: snapshots

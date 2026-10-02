@@ -2,7 +2,9 @@ version: 2
 sources:
   - name: facebook_marketing
     database: mkt_raw
-    schema: facebook_marketing
+    # Overridable so snapshot practice runs can read a sandbox copy:
+    #   dbt snapshot --vars "{facebook_marketing_schema: sandbox_facebook_marketing}"
+    schema: "{{ var('facebook_marketing_schema', 'facebook_marketing') }}"
     description: >-
       Raw facebook_marketing data. Source system: Meta Marketing API (Facebook + Instagram ads) via Airbyte
       source-facebook-marketing.

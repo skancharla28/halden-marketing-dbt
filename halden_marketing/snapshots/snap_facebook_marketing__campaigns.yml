@@ -1,0 +1,27 @@
+snapshots:
+  - name: snap_facebook_marketing__campaigns
+    description: >-
+      SCD2 history of Meta campaigns (budget, status, schedule…). One row per campaign version:
+      dbt_valid_from / dbt_valid_to bound when that version was current; dbt_valid_to is null for the
+      current version. Deleted campaigns get a closing row with dbt_is_deleted = true. History only
+      exists from the first `dbt snapshot` run onwards, so it must run on a schedule.
+    relation: source('facebook_marketing', 'campaigns')
+    config:
+      unique_key: id
+      # Meta bumps updated_time on every edit. An edit that doesn't bump it is NOT captured.
+      strategy: timestamp
+      updated_at: updated_time
+      hard_deletes: new_record
+    columns:
+      - name: id
+        description: Meta campaign id. Not unique here (one row per version); unique where dbt_valid_to is null.
+      - name: daily_budget
+        description: Daily budget in CENTS, as in the source.
+      - name: dbt_valid_from
+        description: When this version became current (the source's updated_time).
+      - name: dbt_valid_to
+        description: When this version was replaced; null for the current version.
+      - name: dbt_is_deleted
+        description: >-
+          'True' on the row recording that the campaign disappeared from the source. Stored as text
+          ('True' / 'False') by dbt-duckdb, not as a boolean.

@@ -31,7 +31,13 @@ first time, briefly explain what it is and why it fits. Tick items off the roadm
 - [x] Packages: `dbt_utils` 1.4.1 (first use: `unique_combination_of_columns` on `channel_mapping`;
       next: `generate_surrogate_key`, `union_relations`, `date_spine`). Maybe `dbt_expectations` later
 - [ ] Incremental models: daily ad insights and GA4 events (`merge` / `delete+insert`, `is_incremental()`)
-- [ ] Snapshots: SCD2 history of campaign budgets/status and product prices
+- [x] Snapshots: `snap_facebook_marketing__campaigns` (timestamp strategy, `hard_deletes: new_record`),
+      practised in `sandbox/snapshot_practice/`. Covered: strategies, deletes, missed edits, the
+      first run having to come before changes, SCD2 dim design (`dim_campaigns` current +
+      `dim_campaigns_history`, range joins, one version per day), CDC/audit logs when every change
+      matters, and per-snapshot schedules via tags + orchestrator. Still to add: TikTok / LinkedIn
+      campaigns, Google (`check` strategy), product variants.
+- [ ] Vars: first use is `facebook_marketing_schema`, which points the Meta source at a sandbox copy
 - [ ] Singular tests and custom generic tests (e.g. spend reconciles to platform totals).
       First singular test: `tests/assert_all_utm_pairs_mapped.sql`
 - [ ] Unit tests (dbt 1.8+) for tricky logic such as UTM parsing and attribution
@@ -123,6 +129,8 @@ The final marts are the interface for conversational analytics, so:
 halden-marketing-dbt/
 ├── .venv/                      # Python venv with dbt-core + dbt-duckdb (see requirements.txt)
 ├── requirements.txt            # pinned deps; duckdb must stay <= MotherDuck's supported version
+├── sandbox/                    # hand-run MotherDuck SQL for practice exercises (not part of dbt)
+│   └── snapshot_practice/      # 01_setup → snapshot → 02 → snapshot → 03 → snapshot → 04_inspect → 99_cleanup
 └── halden_marketing/           # the dbt project — run dbt from here
     ├── dbt_project.yml
     ├── profiles.yml            # committed; no secrets (token comes from env)
@@ -130,6 +138,7 @@ halden-marketing-dbt/
     ├── package-lock.yml        # exact resolved versions; committed
     ├── seeds/                  # hand-maintained CSVs (+ _seeds.yml), loaded to the `seeds` schema
     ├── tests/                  # singular tests
+    ├── snapshots/              # SCD2 snapshots (YAML), written to the `snapshots` schema
     ├── macros/
     │   ├── generate_schema_name.sql   # custom schema used as-is (`intermediate`, not `staging_intermediate`)
     │   └── extract_url_param.sql      # URL-decoded query-string param from a URL/path
@@ -159,7 +168,8 @@ $env:MOTHERDUCK_TOKEN = [Environment]::GetEnvironmentVariable('MOTHERDUCK_TOKEN'
 - The VS Code dbt extension runs dbt Fusion, not dbt-core. Fusion only sees the profile's main database,
   which is why `profiles.yml` explicitly attaches `md:mkt_raw` (without `read_only` — dbt-core errors on
   the mode mismatch).
-- The editor's SQL linter is T-SQL and flags Jinja as errors; ignore those, trust `dbt build`.
+- The editor's SQL linter is T-SQL and flags Jinja and DuckDB syntax as errors; ignore those, trust `dbt build`.
+- dbt-duckdb snapshots store `dbt_is_deleted` as text ('True' / 'False'), not boolean.
 
 ## MotherDuck architecture
 
@@ -178,6 +188,8 @@ Two databases: Airbyte loads raw data into `mkt_raw`; dbt reads from it and writ
 | `mkt_analytics` | `staging` | `stg_*` models (views) |
 | | `intermediate` | `int_*` models (views) |
 | | `seeds` | seed tables loaded by `dbt seed` |
+| | `snapshots` | SCD2 snapshot tables; built up run by run and cannot be rebuilt, so never drop casually |
+| `mkt_raw` | `sandbox_*` | practice copies of raw tables (e.g. `sandbox_facebook_marketing`); never edit the real raw schemas |
 
 All raw tables carry Airbyte metadata columns (`_airbyte_raw_id`, `_airbyte_extracted_at`, `_airbyte_meta`,
 `_airbyte_generation_id`). Staging models keep only `_airbyte_extracted_at`. Many fields are JSON
