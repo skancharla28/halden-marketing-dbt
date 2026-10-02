@@ -26,8 +26,8 @@ first time, briefly explain what it is and why it fits. Tick items off the roadm
 - [x] Sources with column docs (all 7 raw schemas)
 - [x] Staging and intermediate models; custom schema macro; reusable macro (`extract_url_param`)
 - [x] Generic tests (unique, not_null, relationships, accepted_values)
-- [ ] Seeds (tick after 3 implementations; 2/3 so far: `channel_mapping`, `discount_code_types`).
-      Ideas: KPI targets, country/region
+- [x] Seeds (3/3: `channel_mapping`, `discount_code_types`, `campaign_attributes`). More ideas:
+      KPI targets, objective mapping, country/region
 - [x] Packages: `dbt_utils` 1.4.1 (first use: `unique_combination_of_columns` on `channel_mapping`;
       next: `generate_surrogate_key`, `union_relations`, `date_spine`). Maybe `dbt_expectations` later
 - [ ] Incremental models: daily ad insights and GA4 events (`merge` / `delete+insert`, `is_incremental()`)
@@ -187,6 +187,8 @@ Two databases: Airbyte loads raw data into `mkt_raw`; dbt reads from it and writ
 | | `docs` | table_definitions, column_definitions — grain, keys, joins and gotchas for every raw table |
 | `mkt_analytics` | `staging` | `stg_*` models (views) |
 | | `intermediate` | `int_*` models (views) |
+| | `marts_marketing` | marketing marts (tables), e.g. `dim_campaigns` |
+| | `marts_attribution`, `marts_mmm` | planned (empty schemas already exist) |
 | | `seeds` | seed tables loaded by `dbt seed` |
 | | `snapshots` | SCD2 snapshot tables; built up run by run and cannot be rebuilt, so never drop casually |
 | `mkt_raw` | `sandbox_*` | practice copies of raw tables (e.g. `sandbox_facebook_marketing`); never edit the real raw schemas |
@@ -229,6 +231,7 @@ products.product_id`, `order_refund_lines.order_line_id → order_lines.order_li
 | Seed | Grain | Notes |
 |---|---|---|
 | `channel_mapping` | utm_source + utm_medium | → `channel`, `platform`, `is_paid`. Keys are the lowercased raw values (incl. variants like `fb`, `paid social`). No-UTM traffic isn't listed (= Direct / Unattributed). `assert_all_utm_pairs_mapped` fails when a new pair appears |
+| `campaign_attributes` | platform + campaign_id | → `channel`, `campaign_tactic`, `initiative_name` (exact marketing-calendar name or 'Always-on'). Inferred from campaign names + calendar. `dim_campaigns` not_null tests fail when a new campaign is unmapped |
 | `discount_code_types` | discount code | → `code_type` (welcome / seasonal_promo / creator / internal). Not in Shopify; inferred from order history. The relationships test on `stg_shopify__discount_codes` fails when a new code appears |
 
 ### Staging — ad platforms (campaigns)
@@ -259,6 +262,12 @@ every platform.
 | `int_shopify__discount_codes_enriched` | discount code | Code + price rule + `code_type` seed + order usage (order count, discount given, net sales, first/last used). Discount codes ↔ price rules are 1:1 today |
 | `int_shopify__customers_enriched` | customer | Customer + default address + email consent; `address_count` |
 
+### Marts — marketing (`models/marts/marketing/`, schema `marts_marketing`, tables)
+
+| Model | Grain | Notes |
+|---|---|---|
+| `dim_campaigns` | campaign (all platforms) | Current attributes only (no history, by choice). `int_ad_campaigns__unioned` + `campaign_attributes` seed: channel, tactic, initiative, `is_always_on`. Join facts on `campaign_key` |
+
 ## Conventions
 
 - Naming: `stg_<source>__<entity>` (plural entity), `int_<source>__<entity>_<verb>`; ids renamed to
@@ -268,4 +277,7 @@ every platform.
 - DuckDB `->>` binds looser than comparison operators, so parenthesize JSON extracts: `(col->>'key')`.
 - Every model has a unique + not_null test on its primary key and `relationships` tests on foreign keys
   (dbt 1.10+ syntax with `arguments:`). Document non-obvious columns in the `_models.yml`.
-- Both layers materialize as views (set in `dbt_project.yml`).
+- Staging and intermediate materialize as views; marts as tables (set in `dbt_project.yml`).
+- MotherDuck MCP queries can miss newly created tables (stale catalog); use fully qualified
+  `database.schema.table` names.
+- Marts are the AI-facing layer: every column gets a plain-English description.

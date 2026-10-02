@@ -45,6 +45,59 @@ seeds:
         data_tests:
           - not_null
 
+  - name: campaign_attributes
+    description: >-
+      Business classification of each ad platform campaign: channel, tactic and the marketing initiative
+      it belongs to. Platforms don't hold this, so it is maintained here. Inferred on 2026-10-02 from
+      campaign names and the marketing calendar. One row per (platform, campaign_id). Add a row for every
+      new campaign: dim_campaigns' not_null tests fail until you do.
+    config:
+      column_types:
+        platform: varchar
+        campaign_id: varchar
+        campaign_name: varchar
+        channel: varchar
+        campaign_tactic: varchar
+        initiative_name: varchar
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: ['platform', 'campaign_id']
+    columns:
+      - name: platform
+        description: Ad platform; same values as int_ad_campaigns__unioned.platform.
+        data_tests:
+          - not_null
+      - name: campaign_id
+        description: Platform campaign id, as text (Meta ids exceed what spreadsheets keep exactly).
+        data_tests:
+          - not_null
+      - name: campaign_name
+        description: For human readability only; not used in joins (dim_campaigns takes the name from the platform).
+      - name: channel
+        description: Reporting channel; same values as channel_mapping.channel, so spend and orders line up.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['Paid Search', 'Paid Social', 'Paid Video']
+      - name: campaign_tactic
+        description: >-
+          prospecting = reach new customers; retargeting = past visitors / purchasers;
+          brand_search / nonbrand_search = Google Search on brand vs generic terms;
+          performance_max = Google PMax (shopping, all inventory); awareness = reach / video views.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['prospecting', 'retargeting', 'brand_search', 'nonbrand_search', 'performance_max', 'awareness']
+      - name: initiative_name
+        description: >-
+          Marketing calendar promotion this campaign was built for (exact calendar name, e.g.
+          'BFCM 2025'), or 'Always-on' for evergreen campaigns.
+        data_tests:
+          - not_null
+
   - name: discount_code_types
     description: >-
       Business classification of each Shopify discount code. Shopify has no type field, so this records

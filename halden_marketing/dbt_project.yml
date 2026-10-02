@@ -36,6 +36,10 @@ models:
     intermediate:
       +materialized: view
       +schema: intermediate
+    marts:
+      +materialized: table
+      marketing:
+        +schema: marts_marketing
 
 seeds:
   halden_marketing:

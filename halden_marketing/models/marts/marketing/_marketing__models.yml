@@ -1,0 +1,58 @@
+version: 2
+
+models:
+  - name: dim_campaigns
+    description: >-
+      Ad campaigns across Meta, Google Ads, TikTok and LinkedIn. One row per campaign, with its current
+      attributes (no history). Join to performance and attribution facts on campaign_key. Use channel,
+      campaign_tactic and initiative_name to group campaigns the way the marketing team reports them.
+    columns:
+      - name: campaign_key
+        description: Unique campaign identifier across all platforms. Use this for joins.
+        data_tests:
+          - unique
+          - not_null
+      - name: platform
+        description: Ad platform that runs the campaign (Meta, Google Ads, TikTok, LinkedIn).
+        data_tests:
+          - not_null
+      - name: campaign_id
+        description: The platform's own campaign id. Matches utm_id on ad click URLs.
+        data_tests:
+          - not_null
+      - name: campaign_name
+        description: Campaign name as set in the ad platform.
+        data_tests:
+          - not_null
+      - name: account_id
+        description: Ad account the campaign belongs to on its platform.
+      - name: channel
+        description: >-
+          Marketing channel (Paid Search, Paid Social, Paid Video). Same values as the channel assigned to
+          Shopify orders, so spend and revenue can be compared by channel.
+        data_tests:
+          - not_null
+      - name: campaign_tactic
+        description: >-
+          What the campaign does: prospecting (find new customers), retargeting (re-engage visitors or
+          past buyers), brand_search, nonbrand_search, performance_max (Google's automated campaigns
+          across all inventory) or awareness (reach and video views).
+        data_tests:
+          - not_null
+      - name: initiative_name
+        description: >-
+          Business initiative the campaign supports, matching the marketing calendar (e.g. 'BFCM 2025',
+          'Summer Sale 2026'), or 'Always-on' for evergreen campaigns. Group by this to see an
+          initiative's total spend across platforms.
+        data_tests:
+          - not_null
+      - name: is_always_on
+        description: True for evergreen campaigns that are not tied to a specific promotion or launch.
+      - name: campaign_status
+        description: Current status, standardized across platforms (active, paused, removed).
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['active', 'paused', 'removed']
+      - name: platform_campaign_status
+        description: Current status exactly as the platform reports it.

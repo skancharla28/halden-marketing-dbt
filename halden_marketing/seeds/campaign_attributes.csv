@@ -1,0 +1,35 @@
+platform,campaign_id,campaign_name,channel,campaign_tactic,initiative_name
+Google Ads,27284546954,Search | Brand | Exact,Paid Search,brand_search,Always-on
+Google Ads,25280673447,Search | NonBrand | Womens Apparel,Paid Search,nonbrand_search,Always-on
+Google Ads,28011437317,Search | NonBrand | Mens Apparel,Paid Search,nonbrand_search,Always-on
+Google Ads,29543389315,Search | NonBrand | Outerwear & Fleece,Paid Search,nonbrand_search,Always-on
+Google Ads,26208049169,PMax | Shopping | All Products,Paid Search,performance_max,Always-on
+Google Ads,26467882330,PMax | Shopping | Bestsellers,Paid Search,performance_max,Always-on
+Google Ads,27143016337,PMax | Holiday Feed 2025,Paid Search,performance_max,Holiday Gifting 2025
+Google Ads,24049281767,YouTube | Awareness | Brand Film,Paid Video,awareness,Always-on
+Google Ads,23920173208,YouTube | Demand Gen | Creator Cutdowns,Paid Video,prospecting,Always-on
+Meta,120235192723217332,PROS | ASC | Evergreen,Paid Social,prospecting,Always-on
+Meta,120247407210818316,PROS | Broad | Women | Conv,Paid Social,prospecting,Always-on
+Meta,120276169285835444,PROS | Broad | Men | Conv,Paid Social,prospecting,Always-on
+Meta,120246286511254168,PROS | Interests | Outdoor & Hiking,Paid Social,prospecting,Always-on
+Meta,120227509771529631,PROS | LAL 1-3% Purchasers | Conv,Paid Social,prospecting,Always-on
+Meta,120201739552934552,PROS | LAL 1-5% High Value | Conv,Paid Social,prospecting,Always-on
+Meta,120271918058008953,PROS | BFCM 2024 | Sale,Paid Social,prospecting,BFCM 2024
+Meta,120282265500287273,PROS | BFCM 2025 | Sale,Paid Social,prospecting,BFCM 2025
+Meta,120282545797967666,PROS | Holiday 2024 | Gifting,Paid Social,prospecting,Holiday Gifting 2024
+Meta,120234892171165445,PROS | Holiday 2025 | Gifting,Paid Social,prospecting,Holiday Gifting 2025
+Meta,120296087623637623,PROS | Spring Launch 2026,Paid Social,prospecting,Spring Collection Launch 2026
+Meta,120251609949676113,PROS | Summer Sale 2025,Paid Social,prospecting,Summer Sale 2025
+Meta,120231590391051579,PROS | Summer Sale 2026,Paid Social,prospecting,Summer Sale 2026
+Meta,120232078029542056,RT | Cart Abandon 7d,Paid Social,retargeting,Always-on
+Meta,120248549486333884,RT | DPA | Viewed 30d,Paid Social,retargeting,Always-on
+Meta,120202803198732986,RT | BFCM 2025 | Past Purchasers,Paid Social,retargeting,BFCM 2025
+TikTok,1730051035093150144,TT | Prospecting | Broad | Web Conv,Paid Social,prospecting,Always-on
+TikTok,1772035468380777190,TT | Spark Ads | Creators | Prospecting,Paid Social,prospecting,Always-on
+TikTok,1764943970393833722,TT | Video Shopping Ads | Catalog,Paid Social,prospecting,Always-on
+TikTok,1753068109992588437,TT | BFCM 2024 | Sale,Paid Social,prospecting,BFCM 2024
+TikTok,1775070794916945657,TT | BFCM 2025 | Sale,Paid Social,prospecting,BFCM 2025
+TikTok,1703697969676988483,TT | Summer Sale 2026,Paid Social,prospecting,Summer Sale 2026
+LinkedIn,388013719,LI | Corporate Gifting | Executive Assistants,Paid Social,prospecting,Always-on
+LinkedIn,396428322,LI | Corporate Gifting | HR & People Leaders,Paid Social,prospecting,Always-on
+LinkedIn,327671303,LI | Team Apparel | Ops & Facilities Managers,Paid Social,prospecting,Always-on
