@@ -39,6 +39,10 @@ first time, briefly explain what it is and why it fits. Tick items off the roadm
 - [ ] Analyses: ad-hoc SQL (e.g. attribution model comparison) kept in `analyses/`
 - [ ] Hooks / operations: `on-run-end`, `run-operation` macros
 - [ ] Exposures: dashboards and the LLM interface as downstream consumers
+- [ ] Python models (dbt-duckdb runs them locally in the dbt process, using the `.venv` packages):
+      for light ML / pandas work such as adstock and saturation features, scoring with a saved
+      model, and pacing forecasts. Not for MMM training (see below). Fusion may not support them;
+      use dbt-core.
 - [ ] Semantic layer / MetricFlow: semantic models and metrics for the KPIs
 - [ ] Docs site (`dbt docs generate`), tags, selectors, `persist_docs`
 
@@ -52,6 +56,48 @@ first time, briefly explain what it is and why it fits. Tick items off the roadm
 - Marts (`marts/`): `fct_ad_performance_daily`, `fct_orders`, `fct_order_lines`, `fct_sessions`,
   `fct_attribution`, `dim_campaigns`, `dim_products`, `dim_customers`, `dim_date`, plus a daily
   channel-level table ready for MMM.
+
+### Campaigns and marketing initiatives (two-level design)
+
+Business initiatives (BFCM 2025, Summer Sale 2026, Spring Launch 2026) run as separate campaigns on
+each platform. Model both levels; don't collapse platform campaigns:
+
+```
+dim_marketing_initiatives   one row per initiative (from manual.marketing_calendar) + "Always-on" buckets
+        ▲ initiative_id
+dim_campaigns               one row per platform campaign, all platforms (conformed dim)
+        ▲ campaign_key
+fct_ad_performance_daily    spend / impressions / clicks per campaign per day
+```
+
+- **`dim_campaigns`**: one staging model per platform with standardized columns, then
+  `int_ad_campaigns__unioned` with a surrogate key on (platform, campaign_id). Align hierarchy
+  levels first: a LinkedIn *campaign group* corresponds to the other platforms' campaign, and a
+  LinkedIn *campaign* to an ad set or ad group. Map platform objectives and statuses to a shared
+  vocabulary (seed). Adds `initiative_id` and a campaign role (prospecting / retargeting / brand search…).
+- **`dim_marketing_initiatives`**: built from the marketing calendar's promotion and launch entries
+  (name, dates, discount_pct, discount_code). Evergreen campaigns (`Search | Brand | Exact`,
+  `RT | Cart Abandon 7d`, `PROS | ASC | Evergreen`…) map to "Always-on" buckets, so all spend rolls up.
+- **Campaign → initiative mapping**: a mapping seed (campaign → initiative), with a test that fails
+  on unmapped campaigns. Names don't match the calendar exactly (e.g. "Spring Collection Launch 2026"
+  vs "PROS | Spring Launch 2026"), so don't fuzzy-match or assign by overlapping dates. The long-term
+  fix is a naming convention with an initiative code in campaign names and `utm_campaign`.
+- **Initiative ROI**: spend from mapped campaigns + revenue from orders using the initiative's
+  discount code or attributed to its campaigns + discount given (`int_shopify__discount_codes_enriched`).
+- The calendar's other entries (events, media_change pause/budget tests, media_flight) are MMM
+  controls and natural experiments, not initiatives.
+
+### MMM (media mix modelling)
+
+Training happens outside dbt; dbt owns the data before and after it:
+1. **Input (dbt, SQL):** `fct_mmm_input_daily`: one row per day, with spend, impressions and clicks
+   per channel, revenue as the outcome, and controls (promotions from `discount_code_types`,
+   holidays, seasonality). Heavily tested; data quality here matters more than the model.
+2. **Training (outside dbt):** a notebook or script using PyMC-Marketing or Meridian (Bayesian,
+   iterative, minutes to hours per fit) reads the input table and writes results (channel
+   contributions, ROI, response curves) back to MotherDuck in `mkt_raw`.
+3. **Outputs (dbt):** declare the results as a source and build marts such as
+   `fct_mmm_channel_contribution`, so ROI and incrementality are queryable alongside other KPIs.
 
 ### KPIs
 
