@@ -1,0 +1,123 @@
+version: 2
+
+models:
+  - name: stg_ga4__events
+    description: >-
+      One row per GA4 event, with event_params pivoted into typed columns (incremental; replaces the last
+      ga4_lookback_days event dates each run). Only consenting visitors are tracked, so about 2/3 of
+      Shopify orders have a purchase event.
+    columns:
+      - name: event_id
+        description: >-
+          Surrogate key on user_pseudo_id + event_timestamp + event_name + page_location (GA4 has no
+          event id; the first three alone have 2 duplicate pairs).
+        data_tests:
+          - unique
+          - not_null
+      - name: session_key
+        description: Surrogate key on user_pseudo_id + ga_session_id. Join events to sessions on this.
+        data_tests:
+          - not_null
+      - name: user_pseudo_id
+        description: Anonymous browser/device id (GA cookie).
+        data_tests:
+          - not_null
+      - name: ga_session_id
+        description: Session start time in epoch seconds; unique only per user_pseudo_id.
+        data_tests:
+          - not_null
+      - name: ga_session_number
+        description: The user's session count on this device (1 = first session).
+      - name: customer_id
+        description: Shopify customer id from GA4 user_id. Only set when the visitor was logged in (~30% of purchases).
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('stg_shopify__customers')
+                field: customer_id
+      - name: order_id
+        description: Shopify order id (ecommerce.transaction_id) on purchase events.
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('stg_shopify__orders')
+                field: order_id
+      - name: event_name
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['session_start', 'first_visit', 'page_view', 'view_item', 'add_to_cart',
+                         'begin_checkout', 'purchase']
+      - name: event_date
+        description: >-
+          GA4 property date (America/New_York). Events just after midnight can keep the previous day's
+          date when their session started before midnight; use event_at for exact time.
+        data_tests:
+          - not_null
+      - name: event_at
+        description: Event time (UTC).
+        data_tests:
+          - not_null
+      - name: user_first_touch_at
+        description: First visit of this device; can be before the export starts (2025-10-01).
+      - name: page_url
+        description: page_location without query string or fragment.
+      - name: utm_source
+        description: >-
+          Lowercased utm_source. utm_* and click id columns are only set on a session's landing events
+          (session_start, first_visit, landing page_view); null there means direct / no UTMs.
+      - name: utm_id
+        description: utm_id = the ad platform campaign id on all paid platforms.
+      - name: ga4_last_click_channel_group
+        description: >-
+          GA4's default channel group under its last non-direct click model (session_traffic_source_last_click).
+          For comparison with our own attribution only.
+      - name: first_user_source
+        description: Source of the device's first-ever visit (GA4 traffic_source). User acquisition, not session source.
+      - name: currency
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['USD']
+      - name: event_value
+        description: The value param (cart / item value on ecommerce events, order revenue on purchase).
+      - name: purchase_revenue
+        description: Purchase revenue incl. shipping and tax = sum of item_revenue + shipping_value + tax_value.
+      - name: ads_storage_consent
+        description: Google consent mode ads_storage (granted / denied).
+
+  - name: stg_ga4__event_items
+    description: >-
+      One row per item on a GA4 ecommerce event (view_item, add_to_cart, begin_checkout, purchase),
+      unnested from events.items.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: ['event_id', 'item_index']
+    columns:
+      - name: event_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_ga4__events')
+                field: event_id
+      - name: item_index
+        description: 1-based position of the item in the event's items list.
+      - name: product_id
+        description: Shopify product id, parsed from item_id.
+      - name: variant_id
+        description: Shopify variant id, parsed from item_id.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_shopify__product_variants')
+                field: variant_id
+      - name: unit_price
+        description: List price per unit (USD), before discount.
+      - name: item_revenue
+        description: >-
+          Revenue for the line after discount (USD). Null on view_item / add_to_cart and on ~1/3 of
+          begin_checkout items.

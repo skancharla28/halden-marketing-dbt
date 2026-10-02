@@ -24,7 +24,8 @@ first time, briefly explain what it is and why it fits. Tick items off the roadm
 ### dbt features
 
 - [x] Sources with column docs (all 7 raw schemas)
-- [x] Staging and intermediate models; custom schema macro; reusable macro (`extract_url_param`)
+- [x] Staging and intermediate models; custom schema macro; reusable macros (`extract_url_param`,
+      `ga4_event_param`)
 - [x] Generic tests (unique, not_null, relationships, accepted_values)
 - [x] Seeds (3/3: `channel_mapping`, `discount_code_types`, `campaign_attributes`). More ideas:
       KPI targets, objective mapping, country/region
@@ -32,7 +33,10 @@ first time, briefly explain what it is and why it fits. Tick items off the roadm
       next: `generate_surrogate_key`, `union_relations`, `date_spine`). Maybe `dbt_expectations` later
 - [ ] Incremental models: first is `stg_facebook_marketing__ad_stats_daily` (`delete+insert` on
       ad_id + date_day, reprocesses the last `ad_stats_lookback_days` days, default 7, because
-      platforms restate recent conversions). Next: GA4 events, try `merge` and `--full-refresh`.
+      platforms restate recent conversions). Second: `stg_ga4__events`, `delete+insert` on
+      `event_date` alone, so whole days are replaced (last `ga4_lookback_days`, default 3). Events are
+      never updated one by one, so replacing days beats merging on a row key. Next: try `merge` on a
+      mutable entity, and `--full-refresh`.
 - [x] Snapshots: `snap_facebook_marketing__campaigns` (timestamp strategy, `hard_deletes: new_record`),
       practised in `sandbox/snapshot_practice/`. Covered: strategies, deletes, missed edits, the
       first run having to come before changes, SCD2 dim design (`dim_campaigns` current +
@@ -195,7 +199,7 @@ Two databases: Airbyte loads raw data into `mkt_raw`; dbt reads from it and writ
 | | `snapshots` | SCD2 snapshot tables; built up run by run and cannot be rebuilt, so never drop casually |
 | `mkt_raw` | `sandbox_*` | practice copies of raw tables (e.g. `sandbox_facebook_marketing`); never edit the real raw schemas |
 
-All raw tables carry Airbyte metadata columns (`_airbyte_raw_id`, `_airbyte_extracted_at`, `_airbyte_meta`,
+All raw tables except `ga4.events` carry Airbyte metadata columns (`_airbyte_raw_id`, `_airbyte_extracted_at`, `_airbyte_meta`,
 `_airbyte_generation_id`). Staging models keep only `_airbyte_extracted_at`. Many fields are JSON
 (line items, refund lines, addresses, consents) and money is often stored as strings.
 
@@ -204,8 +208,8 @@ Before modelling a new raw table, check `mkt_raw.docs.table_definitions` / `colu
 
 ## Models so far
 
-Sources are declared for all seven raw schemas. Models exist for Shopify, and for campaigns and
-daily campaign performance on all four ad platforms. GA4 is not modelled yet.
+Sources are declared for all seven raw schemas. Models exist for Shopify, for campaigns and
+daily campaign performance on all four ad platforms, and for GA4 events (staging only).
 
 ### Staging — Shopify (`models/staging/shopify/`)
 
@@ -227,6 +231,13 @@ daily campaign performance on all four ad platforms. GA4 is not modelled yet.
 
 Key joins: `order_lines.variant_id → product_variants.variant_id`, `product_variants.product_id →
 products.product_id`, `order_refund_lines.order_line_id → order_lines.order_line_id`.
+
+### Staging — GA4 (`models/staging/ga4/`)
+
+| Model | Grain | Notes |
+|---|---|---|
+| `stg_ga4__events` | event | **Incremental** (whole days). The 17 `event_params` keys become typed columns (`ga4_event_param` macro); structs flattened; empty arrays/structs dropped. `event_id` is a surrogate key and includes `page_location` (no natural key exists). `session_key` = user_pseudo_id + ga_session_id. UTMs/click ids only on landing events. `order_id` → Shopify orders (~68% of eligible orders; consent) |
+| `stg_ga4__event_items` | event × item | Unnested `items`; `variant_id` / `product_id` parsed from `item_id` (100% match Shopify variants). `item_revenue` is after discount; null on view/add-to-cart and ~1/3 of checkouts |
 
 ### Seeds
 
