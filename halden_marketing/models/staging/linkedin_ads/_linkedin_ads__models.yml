@@ -1,0 +1,31 @@
+version: 2
+
+models:
+  - name: stg_linkedin_ads__campaigns
+    description: >-
+      One row per LinkedIn campaign. This level, not the campaign group, matches other platforms'
+      campaigns: campaign_id equals utm_id on LinkedIn clicks.
+    columns:
+      - name: campaign_id
+        data_tests:
+          - unique
+          - not_null
+      - name: campaign_group_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_linkedin_ads__campaign_groups')
+                field: campaign_group_id
+      - name: daily_budget
+        description: Daily budget amount, in daily_budget_currency.
+
+  - name: stg_linkedin_ads__campaign_groups
+    description: >-
+      One row per LinkedIn campaign group: a folder of campaigns that works like a business initiative
+      (e.g. Corporate Gifting).
+    columns:
+      - name: campaign_group_id
+        data_tests:
+          - unique
+          - not_null

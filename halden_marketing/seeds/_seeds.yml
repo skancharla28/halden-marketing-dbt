@@ -15,8 +15,9 @@ seeds:
         platform: varchar
         is_paid: boolean
     data_tests:
-      - unique:
-          column_name: "utm_source || '|' || utm_medium"
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: ['utm_source', 'utm_medium']
     columns:
       - name: utm_source
         description: Lowercased utm_source value as it appears in the data (e.g. fb, ig, an are all Meta).

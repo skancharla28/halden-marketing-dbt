@@ -1,0 +1,16 @@
+version: 2
+
+models:
+  - name: stg_google_ads__campaigns
+    description: >-
+      One row per Google Ads campaign, taken from the latest row of the daily campaign report
+      (attributes are repeated on every report row).
+    columns:
+      - name: campaign_id
+        data_tests:
+          - unique
+          - not_null
+      - name: advertising_channel_type
+        description: SEARCH, PERFORMANCE_MAX, VIDEO or DEMAND_GEN. Google's closest equivalent to an objective.
+      - name: end_date
+        description: Campaign end date; null when it has none (Google's 2037-12-30 placeholder).

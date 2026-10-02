@@ -1,0 +1,12 @@
+version: 2
+
+models:
+  - name: stg_tiktok_marketing__campaigns
+    description: One row per TikTok campaign.
+    columns:
+      - name: campaign_id
+        data_tests:
+          - unique
+          - not_null
+      - name: budget
+        description: Budget in USD; read with budget_mode (BUDGET_MODE_DAY = daily budget).

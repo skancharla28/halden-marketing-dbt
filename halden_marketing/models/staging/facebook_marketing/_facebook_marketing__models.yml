@@ -2,7 +2,13 @@ version: 2
 
 models:
   - name: stg_facebook_marketing__campaigns
+    description: One row per Meta campaign.
     columns:
       - name: campaign_id
         data_tests:
+          - unique
           - not_null
+      - name: daily_budget
+        description: Daily budget in USD (source stores cents). Null when budgets are set on ad sets.
+      - name: stopped_at
+        description: Scheduled stop; null for evergreen campaigns.

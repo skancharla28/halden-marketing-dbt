@@ -1,0 +1,46 @@
+version: 2
+
+models:
+  - name: int_ad_campaigns__unioned
+    description: >-
+      One row per campaign across Meta, Google Ads, TikTok and LinkedIn, with only the columns every
+      platform populates. Basis for dim_campaigns. LinkedIn rows are LinkedIn campaigns (their
+      campaign groups behave like initiatives). Platform-specific attributes stay in each platform's
+      stg_<platform>__campaigns model.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: ['platform', 'campaign_id']
+    columns:
+      - name: campaign_key
+        description: Surrogate key on (platform, campaign_id). Use this to join across platforms.
+        data_tests:
+          - unique
+          - not_null
+      - name: platform
+        description: Ad platform. Values match channel_mapping.platform.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['Meta', 'Google Ads', 'TikTok', 'LinkedIn']
+      - name: campaign_id
+        description: The platform's own campaign id, as text. Equals utm_id on landing URLs.
+        data_tests:
+          - not_null
+      - name: campaign_name
+        data_tests:
+          - not_null
+      - name: account_id
+        description: Platform ad account id (Meta account, Google customer, TikTok advertiser, LinkedIn sponsored account).
+        data_tests:
+          - not_null
+      - name: campaign_status
+        description: Standardized status across platforms.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['active', 'paused', 'removed']
+      - name: platform_campaign_status
+        description: Status exactly as the platform reports it (e.g. ENABLED, ENABLE, ACTIVE).

@@ -28,7 +28,8 @@ first time, briefly explain what it is and why it fits. Tick items off the roadm
 - [x] Generic tests (unique, not_null, relationships, accepted_values)
 - [ ] Seeds (tick after 3 implementations; 2/3 so far: `channel_mapping`, `discount_code_types`).
       Ideas: KPI targets, country/region
-- [ ] Packages: `dbt_utils` (surrogate keys, date spine, `union_relations`), maybe `dbt_expectations`
+- [x] Packages: `dbt_utils` 1.4.1 (first use: `unique_combination_of_columns` on `channel_mapping`;
+      next: `generate_surrogate_key`, `union_relations`, `date_spine`). Maybe `dbt_expectations` later
 - [ ] Incremental models: daily ad insights and GA4 events (`merge` / `delete+insert`, `is_incremental()`)
 - [ ] Snapshots: SCD2 history of campaign budgets/status and product prices
 - [ ] Singular tests and custom generic tests (e.g. spend reconciles to platform totals).
@@ -71,10 +72,12 @@ fct_ad_performance_daily    spend / impressions / clicks per campaign per day
 ```
 
 - **`dim_campaigns`**: one staging model per platform with standardized columns, then
-  `int_ad_campaigns__unioned` with a surrogate key on (platform, campaign_id). Align hierarchy
-  levels first: a LinkedIn *campaign group* corresponds to the other platforms' campaign, and a
-  LinkedIn *campaign* to an ad set or ad group. Map platform objectives and statuses to a shared
-  vocabulary (seed). Adds `initiative_id` and a campaign role (prospecting / retargeting / brand search…).
+  `int_ad_campaigns__unioned` with a surrogate key on (platform, campaign_id) — **built**. LinkedIn
+  level decision: a LinkedIn *campaign* is treated as the campaign (not the campaign group),
+  because `utm_id` equals the campaign id on every platform, including LinkedIn, so attribution
+  uses one join. LinkedIn campaign groups behave like initiatives. (Fivetran's ad_reporting
+  package maps it the other way, by structure.) Next: map objectives to a shared vocabulary
+  (seed), add `initiative_id` and a campaign role (prospecting / retargeting / brand search…).
 - **`dim_marketing_initiatives`**: built from the marketing calendar's promotion and launch entries
   (name, dates, discount_pct, discount_code). Evergreen campaigns (`Search | Brand | Exact`,
   `RT | Cart Abandon 7d`, `PROS | ASC | Evergreen`…) map to "Always-on" buckets, so all spend rolls up.
@@ -123,6 +126,8 @@ halden-marketing-dbt/
 └── halden_marketing/           # the dbt project — run dbt from here
     ├── dbt_project.yml
     ├── profiles.yml            # committed; no secrets (token comes from env)
+    ├── packages.yml            # dbt packages (dbt_utils); `dbt deps` installs to dbt_packages/ (gitignored)
+    ├── package-lock.yml        # exact resolved versions; committed
     ├── seeds/                  # hand-maintained CSVs (+ _seeds.yml), loaded to the `seeds` schema
     ├── tests/                  # singular tests
     ├── macros/
@@ -149,6 +154,7 @@ $env:MOTHERDUCK_TOKEN = [Environment]::GetEnvironmentVariable('MOTHERDUCK_TOKEN'
 ..\.venv\Scripts\dbt.exe build --select <model>+ --profiles-dir .
 ```
 
+- After cloning or changing `packages.yml`, run `dbt deps` first.
 - Python `duckdb` must not exceed MotherDuck's supported version (1.5.5 as of 2026-10-01); newer breaks `md:`.
 - The VS Code dbt extension runs dbt Fusion, not dbt-core. Fusion only sees the profile's main database,
   which is why `profiles.yml` explicitly attaches `md:mkt_raw` (without `read_only` — dbt-core errors on
@@ -182,7 +188,8 @@ Before modelling a new raw table, check `mkt_raw.docs.table_definitions` / `colu
 
 ## Models so far
 
-Sources are declared for all seven raw schemas; models exist only for Shopify and Facebook so far.
+Sources are declared for all seven raw schemas. Models exist for Shopify and for campaigns on
+all four ad platforms; GA4 and ad performance metrics are not modelled yet.
 
 ### Staging — Shopify (`models/staging/shopify/`)
 
@@ -212,11 +219,25 @@ products.product_id`, `order_refund_lines.order_line_id → order_lines.order_li
 | `channel_mapping` | utm_source + utm_medium | → `channel`, `platform`, `is_paid`. Keys are the lowercased raw values (incl. variants like `fb`, `paid social`). No-UTM traffic isn't listed (= Direct / Unattributed). `assert_all_utm_pairs_mapped` fails when a new pair appears |
 | `discount_code_types` | discount code | → `code_type` (welcome / seasonal_promo / creator / internal). Not in Shopify; inferred from order history. The relationships test on `stg_shopify__discount_codes` fails when a new code appears |
 
-### Staging — Facebook Marketing
+### Staging — ad platforms (campaigns)
+
+Each platform's campaign model uses the same names for shared columns (`campaign_id`,
+`campaign_name`, `account_id`, `campaign_status`, `created_at`…). `campaign_id` equals `utm_id` on
+every platform.
 
 | Model | Grain | Notes |
 |---|---|---|
-| `stg_facebook_marketing__campaigns` | campaign | `daily_budget` converted from cents |
+| `stg_facebook_marketing__campaigns` | campaign | `daily_budget` converted from cents; null when budget is on ad sets |
+| `stg_google_ads__campaigns` | campaign | Source `campaign` is a daily report (campaign × date × network × device); keeps the latest row. No objective (use `advertising_channel_type`), no created date; end date `2037-12-30` → null |
+| `stg_tiktok_marketing__campaigns` | campaign | No start date |
+| `stg_linkedin_ads__campaigns` | campaign | Account/group ids parsed from URNs; `runSchedule` epoch ms → timestamps; budget from JSON |
+| `stg_linkedin_ads__campaign_groups` | campaign group | Initiative-like folders (Corporate Gifting, Team & Workwear) |
+
+### Intermediate — ad platforms (`models/intermediate/ad_platforms/`)
+
+| Model | Grain | Notes |
+|---|---|---|
+| `int_ad_campaigns__unioned` | campaign (all platforms) | Jinja loop over a platform → model dict; `campaign_key` = `dbt_utils.generate_surrogate_key(['platform','campaign_id'])`; only columns every platform fills (id, name, account, status); `campaign_status` standardized to active / paused / removed; `platform` values match `channel_mapping.platform` |
 
 ### Intermediate — Shopify (`models/intermediate/shopify/`)
 
