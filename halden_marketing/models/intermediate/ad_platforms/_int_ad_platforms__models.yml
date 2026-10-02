@@ -44,3 +44,23 @@ models:
                 values: ['active', 'paused', 'removed']
       - name: platform_campaign_status
         description: Status exactly as the platform reports it (e.g. ENABLED, ENABLE, ACTIVE).
+
+  - name: int_ad_performance__campaign_daily
+    description: >-
+      One row per campaign per day across all ad platforms, with the same additive metrics. clicks are
+      website clicks (Meta link clicks, LinkedIn landing page clicks).
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: ['campaign_key', 'date_day']
+    columns:
+      - name: campaign_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('int_ad_campaigns__unioned')
+                field: campaign_key
+      - name: date_day
+        data_tests:
+          - not_null

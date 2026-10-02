@@ -12,3 +12,32 @@ models:
         description: Daily budget in USD (source stores cents). Null when budgets are set on ad sets.
       - name: stopped_at
         description: Scheduled stop; null for evergreen campaigns.
+
+  - name: stg_facebook_marketing__ad_stats_daily
+    description: >-
+      One row per Meta ad per day (incremental; reprocesses the last ad_stats_lookback_days days each run).
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: ['ad_id', 'date_day']
+    columns:
+      - name: campaign_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_facebook_marketing__campaigns')
+                field: campaign_id
+      - name: date_day
+        data_tests:
+          - not_null
+      - name: reach
+        description: Unique people reached. Not additive across days or ads.
+      - name: clicks
+        description: All clicks, including likes, comments and profile clicks.
+      - name: link_clicks
+        description: Clicks to the website. Use this for traffic and CPC.
+      - name: platform_conversions
+        description: Purchases Meta attributes to the ad (omni_purchase, 7-day click / 1-day view).
+      - name: platform_conversion_value
+        description: Revenue of those purchases, as claimed by Meta.

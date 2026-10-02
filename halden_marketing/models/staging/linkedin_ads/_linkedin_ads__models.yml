@@ -20,6 +20,25 @@ models:
       - name: daily_budget
         description: Daily budget amount, in daily_budget_currency.
 
+  - name: stg_linkedin_ads__campaign_stats_daily
+    description: One row per LinkedIn campaign per day (only days inside a flight have rows).
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: ['campaign_id', 'date_day']
+    columns:
+      - name: campaign_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_linkedin_ads__campaigns')
+                field: campaign_id
+      - name: clicks
+        description: All clicks, including social actions.
+      - name: landing_page_clicks
+        description: Clicks to the website. Use this for traffic and CPC.
+
   - name: stg_linkedin_ads__campaign_groups
     description: >-
       One row per LinkedIn campaign group: a folder of campaigns that works like a business initiative

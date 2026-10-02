@@ -30,7 +30,9 @@ first time, briefly explain what it is and why it fits. Tick items off the roadm
       KPI targets, objective mapping, country/region
 - [x] Packages: `dbt_utils` 1.4.1 (first use: `unique_combination_of_columns` on `channel_mapping`;
       next: `generate_surrogate_key`, `union_relations`, `date_spine`). Maybe `dbt_expectations` later
-- [ ] Incremental models: daily ad insights and GA4 events (`merge` / `delete+insert`, `is_incremental()`)
+- [ ] Incremental models: first is `stg_facebook_marketing__ad_stats_daily` (`delete+insert` on
+      ad_id + date_day, reprocesses the last `ad_stats_lookback_days` days, default 7, because
+      platforms restate recent conversions). Next: GA4 events, try `merge` and `--full-refresh`.
 - [x] Snapshots: `snap_facebook_marketing__campaigns` (timestamp strategy, `hard_deletes: new_record`),
       practised in `sandbox/snapshot_practice/`. Covered: strategies, deletes, missed edits, the
       first run having to come before changes, SCD2 dim design (`dim_campaigns` current +
@@ -39,7 +41,7 @@ first time, briefly explain what it is and why it fits. Tick items off the roadm
       campaigns, Google (`check` strategy), product variants.
 - [ ] Vars: first use is `facebook_marketing_schema`, which points the Meta source at a sandbox copy
 - [ ] Singular tests and custom generic tests (e.g. spend reconciles to platform totals).
-      First singular test: `tests/assert_all_utm_pairs_mapped.sql`
+      Singular tests: `assert_all_utm_pairs_mapped`, `assert_campaign_spend_reconciles_to_sources`
 - [ ] Unit tests (dbt 1.8+) for tricky logic such as UTM parsing and attribution
 - [ ] Model contracts and versions on the marts
 - [ ] Source freshness on `_airbyte_extracted_at`
@@ -60,7 +62,7 @@ first time, briefly explain what it is and why it fits. Tick items off the roadm
 - Channel classification of Shopify orders and GA4 sessions via a seed-driven mapping.
 - Attribution: platform-reported, Shopify last-click / first-click (UTMs, click ids, customer journeys),
   GA4 sessions.
-- Marts (`marts/`): `fct_ad_performance_daily`, `fct_orders`, `fct_order_lines`, `fct_sessions`,
+- Marts (`marts/`): `fct_campaign_performance_daily` (built), `fct_ad_performance_daily` (ad level, later), `fct_orders`, `fct_order_lines`, `fct_sessions`,
   `fct_attribution`, `dim_campaigns`, `dim_products`, `dim_customers`, `dim_date`, plus a daily
   channel-level table ready for MMM.
 
@@ -202,8 +204,8 @@ Before modelling a new raw table, check `mkt_raw.docs.table_definitions` / `colu
 
 ## Models so far
 
-Sources are declared for all seven raw schemas. Models exist for Shopify and for campaigns on
-all four ad platforms; GA4 and ad performance metrics are not modelled yet.
+Sources are declared for all seven raw schemas. Models exist for Shopify, and for campaigns and
+daily campaign performance on all four ad platforms. GA4 is not modelled yet.
 
 ### Staging — Shopify (`models/staging/shopify/`)
 
@@ -248,11 +250,24 @@ every platform.
 | `stg_linkedin_ads__campaigns` | campaign | Account/group ids parsed from URNs; `runSchedule` epoch ms → timestamps; budget from JSON |
 | `stg_linkedin_ads__campaign_groups` | campaign group | Initiative-like folders (Corporate Gifting, Team & Workwear) |
 
+### Staging — ad platforms (performance)
+
+All use the same metric names: `date_day`, `spend` (USD), `impressions`, `clicks`,
+`platform_conversions`, `platform_conversion_value`.
+
+| Model | Grain | Notes |
+|---|---|---|
+| `stg_facebook_marketing__ad_stats_daily` | ad × day | **Incremental**. Purchases = `omni_purchase` only (the actions JSON repeats each purchase under 3 types); `link_clicks` = website clicks |
+| `stg_google_ads__campaign_stats_daily` | campaign × day × network × device | Only Google report covering PMax (no ad groups); cost micros / 1e6 |
+| `stg_tiktok_marketing__campaign_stats_daily` | campaign × day | Metrics are strings in JSON; date from `dimensions.stat_time_day` (the timestamp column is midnight New York stored as UTC); `total_complete_payment_rate` = purchase value |
+| `stg_linkedin_ads__campaign_stats_daily` | campaign × day | Only flight days; campaign id from URN; `costInUsd` |
+
 ### Intermediate — ad platforms (`models/intermediate/ad_platforms/`)
 
 | Model | Grain | Notes |
 |---|---|---|
 | `int_ad_campaigns__unioned` | campaign (all platforms) | Jinja loop over a platform → model dict; `campaign_key` = `dbt_utils.generate_surrogate_key(['platform','campaign_id'])`; only columns every platform fills (id, name, account, status); `campaign_status` standardized to active / paused / removed; `platform` values match `channel_mapping.platform` |
+| `int_ad_performance__campaign_daily` | campaign × day (all platforms) | Meta and Google summed up to campaign × day; `clicks` = website clicks (Meta link clicks, LinkedIn landing page clicks); same `campaign_key` as the campaigns model |
 
 ### Intermediate — Shopify (`models/intermediate/shopify/`)
 
@@ -267,6 +282,7 @@ every platform.
 | Model | Grain | Notes |
 |---|---|---|
 | `dim_campaigns` | campaign (all platforms) | Current attributes only (no history, by choice). `int_ad_campaigns__unioned` + `campaign_attributes` seed: channel, tactic, initiative, `is_always_on`. Join facts on `campaign_key` |
+| `fct_campaign_performance_daily` | campaign × day | Spend, impressions, clicks, platform conversions/value; campaign attributes copied in so it can be queried on its own. Additive metrics only (compute CTR/CPC/ROAS after summing). Campaign × day because Google PMax has no ad-level data; `fct_ad_performance_daily` is reserved for a future ad-level fact. Spend reconciles to raw sources (singular test) |
 
 ## Conventions
 
@@ -279,5 +295,5 @@ every platform.
   (dbt 1.10+ syntax with `arguments:`). Document non-obvious columns in the `_models.yml`.
 - Staging and intermediate materialize as views; marts as tables (set in `dbt_project.yml`).
 - MotherDuck MCP queries can miss newly created tables (stale catalog); use fully qualified
-  `database.schema.table` names.
+  `database.schema.table` names, or query through the venv's duckdb with `md:`.
 - Marts are the AI-facing layer: every column gets a plain-English description.

@@ -56,3 +56,59 @@ models:
                 values: ['active', 'paused', 'removed']
       - name: platform_campaign_status
         description: Current status exactly as the platform reports it.
+
+  - name: fct_campaign_performance_daily
+    description: >-
+      Daily ad spend and delivery for every campaign on Meta, Google Ads, TikTok and LinkedIn. One row per
+      campaign per day with spend. Campaign attributes are included, so it can be queried alone; join
+      dim_campaigns on campaign_key for more. All metrics are additive (sum them); calculate ratios such
+      as CTR, CPC, CPM and platform ROAS after summing. Platform conversions are each platform's own
+      claim and double-count across platforms; use Shopify-attributed revenue for true ROAS.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: ['campaign_key', 'date_day']
+    columns:
+      - name: date_day
+        description: Day the ads ran (account timezone, America/New_York).
+        data_tests:
+          - not_null
+      - name: campaign_key
+        description: Campaign identifier; join to dim_campaigns.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_campaigns')
+                field: campaign_key
+      - name: platform
+        description: Ad platform (Meta, Google Ads, TikTok, LinkedIn).
+      - name: channel
+        description: Marketing channel (Paid Search, Paid Social, Paid Video), comparable with Shopify order channels.
+        data_tests:
+          - not_null
+      - name: campaign_id
+        description: The platform's own campaign id.
+      - name: campaign_name
+        description: Campaign name as set in the ad platform.
+      - name: campaign_tactic
+        description: prospecting, retargeting, brand_search, nonbrand_search, performance_max or awareness.
+      - name: initiative_name
+        description: Marketing initiative (e.g. 'BFCM 2025') or 'Always-on'.
+      - name: is_always_on
+        description: True for evergreen campaigns not tied to a promotion.
+      - name: spend
+        description: Ad spend in USD.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: impressions
+        description: Times the ads were shown.
+      - name: clicks
+        description: Clicks through to the website (social interactions excluded).
+      - name: platform_conversions
+        description: Purchases the platform attributes to itself under its own attribution window.
+      - name: platform_conversion_value
+        description: Revenue the platform attributes to itself. Platform ROAS = sum(platform_conversion_value) / sum(spend).

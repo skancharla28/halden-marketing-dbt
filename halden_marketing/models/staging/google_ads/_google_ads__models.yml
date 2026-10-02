@@ -14,3 +14,24 @@ models:
         description: SEARCH, PERFORMANCE_MAX, VIDEO or DEMAND_GEN. Google's closest equivalent to an objective.
       - name: end_date
         description: Campaign end date; null when it has none (Google's 2037-12-30 placeholder).
+
+  - name: stg_google_ads__campaign_stats_daily
+    description: >-
+      One row per Google Ads campaign per day per network and device. The only Google report that covers
+      Performance Max spend.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: ['campaign_id', 'date_day', 'ad_network_type', 'device']
+    columns:
+      - name: campaign_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_google_ads__campaigns')
+                field: campaign_id
+      - name: spend
+        description: Cost in USD (source is micros).
+      - name: platform_conversions
+        description: Conversions Google attributes to the campaign (fractional under data-driven attribution).
